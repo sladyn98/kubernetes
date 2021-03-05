@@ -38,6 +38,7 @@ import (
 	autoscalingapiv2beta2 "k8s.io/api/autoscaling/v2beta2"
 	batchapiv1 "k8s.io/api/batch/v1"
 	batchapiv1beta1 "k8s.io/api/batch/v1beta1"
+	batchapiv2alpha1 "k8s.io/api/batch/v2alpha1"
 	certificatesapiv1 "k8s.io/api/certificates/v1"
 	certificatesapiv1beta1 "k8s.io/api/certificates/v1beta1"
 	coordinationapiv1 "k8s.io/api/coordination/v1"
@@ -580,7 +581,7 @@ func (m *Instance) InstallAPIs(apiResourceConfigSource serverstorage.APIResource
 	apiGroupsInfo := []*genericapiserver.APIGroupInfo{}
 
 	// used later in the loop to filter the served resource by those that have expired.
-	resourceExpirationEvaluator, err := genericapiserver.NewResourceExpirationEvaluator(version.Get())
+	resourceExpirationEvaluator, err := newResourceExpirationEvaluator(version.Get())
 	if err != nil {
 		return err
 	}
@@ -603,7 +604,7 @@ func (m *Instance) InstallAPIs(apiResourceConfigSource serverstorage.APIResource
 		// Remove resources that serving kinds that are removed.
 		// We do this here so that we don't accidentally serve versions without resources or openapi information that for kinds we don't serve.
 		// This is a spot above the construction of individual storage handlers so that no sig accidentally forgets to check.
-		resourceExpirationEvaluator.RemoveDeletedKinds(groupName, apiGroupInfo.Scheme, apiGroupInfo.VersionedResourcesStorageMap)
+		resourceExpirationEvaluator.removeDeletedKinds(groupName, apiGroupInfo.VersionedResourcesStorageMap)
 		if len(apiGroupInfo.VersionedResourcesStorageMap) == 0 {
 			klog.V(1).Infof("Removing API group %v because it is time to stop serving it because it has no versions per APILifecycle.", groupName)
 			continue
@@ -709,6 +710,7 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 	// disable alpha versions explicitly so we have a full list of what's possible to serve
 	ret.DisableVersions(
 		apiserverinternalv1alpha1.SchemeGroupVersion,
+		batchapiv2alpha1.SchemeGroupVersion,
 		nodev1alpha1.SchemeGroupVersion,
 		rbacv1alpha1.SchemeGroupVersion,
 		schedulingv1alpha1.SchemeGroupVersion,

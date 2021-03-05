@@ -174,6 +174,7 @@ export KUBE_TEST_REPO_LIST=/path/to/repo_list.yaml
 to pull the images from. Sample file:
 
 ```yaml
+dockerLibraryRegistry: your-awesome-registry
 e2eRegistry: your-awesome-registry
 promoterE2eRegistry: your-awesome-registry
 gcRegistry: your-awesome-registry
@@ -198,9 +199,3 @@ After all the above has been done, run the desired tests.
 ```bash
 sudo chmod o+x /etc/docker
 ```
-
-A few images have been mirrored from dockerhub into the `gcr.io/k8s-staging-e2e-test-images` registry
-(`busybox`, `glusterdynamic-provisioner`, `httpd`, `httpd-new`, `nginx`, `nginx-new`, `perl`), and they
-only have a noop Dockerfile. However, due to an [issue](https://github.com/kubernetes/test-infra/issues/20884),
-the same SHA cannot be pushed twice. A small change to them is required in order to generate a new SHA,
-which can then be pushed and promoted.

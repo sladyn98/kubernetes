@@ -263,7 +263,7 @@ func (r *reconciler) finalize(endpoints *corev1.Endpoints, slices slicesByAction
 		if err != nil {
 			return fmt.Errorf("failed to delete %s EndpointSlice for Endpoints %s/%s: %v", endpointSlice.Name, endpoints.Namespace, endpoints.Name, err)
 		}
-		r.endpointSliceTracker.ExpectDeletion(endpointSlice)
+		r.endpointSliceTracker.Delete(endpointSlice)
 		metrics.EndpointSliceChanges.WithLabelValues("delete").Inc()
 	}
 

@@ -42,8 +42,7 @@ func Test_Discover(t *testing.T) {
 		{
 			name: "OneSocketHT",
 			machineInfo: cadvisorapi.MachineInfo{
-				NumCores:   8,
-				NumSockets: 1,
+				NumCores: 8,
 				Topology: []cadvisorapi.Node{
 					{Id: 0,
 						Cores: []cadvisorapi.Core{
@@ -75,8 +74,7 @@ func Test_Discover(t *testing.T) {
 		{
 			name: "DualSocketNoHT",
 			machineInfo: cadvisorapi.MachineInfo{
-				NumCores:   4,
-				NumSockets: 2,
+				NumCores: 4,
 				Topology: []cadvisorapi.Node{
 					{Id: 0,
 						Cores: []cadvisorapi.Core{
@@ -108,8 +106,7 @@ func Test_Discover(t *testing.T) {
 		{
 			name: "DualSocketHT - non unique Core'ID's",
 			machineInfo: cadvisorapi.MachineInfo{
-				NumCores:   12,
-				NumSockets: 2,
+				NumCores: 12,
 				Topology: []cadvisorapi.Node{
 					{Id: 0,
 						Cores: []cadvisorapi.Core{
@@ -151,8 +148,7 @@ func Test_Discover(t *testing.T) {
 		{
 			name: "OneSocketHT fail",
 			machineInfo: cadvisorapi.MachineInfo{
-				NumCores:   8,
-				NumSockets: 1,
+				NumCores: 8,
 				Topology: []cadvisorapi.Node{
 					{Id: 0,
 						Cores: []cadvisorapi.Core{
@@ -170,8 +166,7 @@ func Test_Discover(t *testing.T) {
 		{
 			name: "OneSocketHT fail",
 			machineInfo: cadvisorapi.MachineInfo{
-				NumCores:   8,
-				NumSockets: 1,
+				NumCores: 8,
 				Topology: []cadvisorapi.Node{
 					{Id: 0,
 						Cores: []cadvisorapi.Core{

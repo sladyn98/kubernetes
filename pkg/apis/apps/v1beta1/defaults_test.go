@@ -22,13 +22,14 @@ import (
 
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/apps/install"
 	. "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	_ "k8s.io/kubernetes/pkg/apis/core/install"
 	utilpointer "k8s.io/utils/pointer"
 )
@@ -43,7 +44,7 @@ func TestSetDefaultDeployment(t *testing.T) {
 			RestartPolicy:                 v1.RestartPolicyAlways,
 			SecurityContext:               &v1.PodSecurityContext{},
 			TerminationGracePeriodSeconds: &period,
-			SchedulerName:                 v1.DefaultSchedulerName,
+			SchedulerName:                 api.DefaultSchedulerName,
 		},
 	}
 	tests := []struct {

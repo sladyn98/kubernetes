@@ -140,7 +140,11 @@ func (o *SetSelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, arg
 	if err != nil {
 		return err
 	}
-	o.dryRunVerifier = resource.NewDryRunVerifier(dynamicClient, f.OpenAPIGetter())
+	discoveryClient, err := f.ToDiscoveryClient()
+	if err != nil {
+		return err
+	}
+	o.dryRunVerifier = resource.NewDryRunVerifier(dynamicClient, discoveryClient)
 
 	o.resources, o.selector, err = getResourcesAndSelector(args)
 	if err != nil {

@@ -2,8 +2,7 @@
 
 approvers:
 - foxish
+- gmarek
 reviewers:
 - foxish
-
-emeritus_approvers:
 - gmarek

@@ -45,17 +45,6 @@ func (m TestClientBuilder) ClientOrDie(name string) clientset.Interface {
 	return m.clientset
 }
 
-func (m TestClientBuilder) DiscoveryClient(name string) (discovery.DiscoveryInterface, error) {
-	return m.clientset.Discovery(), nil
-}
-func (m TestClientBuilder) DiscoveryClientOrDie(name string) discovery.DiscoveryInterface {
-	ret, err := m.DiscoveryClient(name)
-	if err != nil {
-		panic(err)
-	}
-	return ret
-}
-
 // FakeDiscoveryWithError inherits DiscoveryInterface(via FakeDiscovery) with some methods accepting testing data.
 type FakeDiscoveryWithError struct {
 	fakediscovery.FakeDiscovery
@@ -112,7 +101,6 @@ func TestController_DiscoveryError(t *testing.T) {
 		"GarbageCollectorController":       startGarbageCollectorController,
 		"EndpointSliceController":          startEndpointSliceController,
 		"EndpointSliceMirroringController": startEndpointSliceMirroringController,
-		"PodDisruptionBudgetController":    startDisruptionController,
 	}
 
 	tcs := map[string]struct {

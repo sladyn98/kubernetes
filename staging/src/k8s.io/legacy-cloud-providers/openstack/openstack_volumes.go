@@ -748,10 +748,10 @@ func (os *OpenStack) GetLabelsForVolume(ctx context.Context, pv *v1.PersistentVo
 	// Construct Volume Labels
 	labels := make(map[string]string)
 	if volume.AvailabilityZone != "" {
-		labels[v1.LabelTopologyZone] = volume.AvailabilityZone
+		labels[v1.LabelFailureDomainBetaZone] = volume.AvailabilityZone
 	}
 	if os.region != "" {
-		labels[v1.LabelTopologyRegion] = os.region
+		labels[v1.LabelFailureDomainBetaRegion] = os.region
 	}
 	klog.V(4).Infof("The Volume %s has labels %v", pv.Spec.Cinder.VolumeID, labels)
 

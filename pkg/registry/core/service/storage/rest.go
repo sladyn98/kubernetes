@@ -872,7 +872,7 @@ func (rs *REST) tryDefaultValidateServiceClusterIPFields(service *api.Service) e
 		}
 	}
 
-	// Infer IPFamilies[] from ClusterIPs[].
+	// default families according to cluster IPs
 	for i, ip := range service.Spec.ClusterIPs {
 		if ip == api.ClusterIPNone {
 			break
@@ -882,8 +882,8 @@ func (rs *REST) tryDefaultValidateServiceClusterIPFields(service *api.Service) e
 		// so the following is safe to do
 		isIPv6 := netutil.IsIPv6String(ip)
 
-		// Family is not specified yet.
-		if i >= len(service.Spec.IPFamilies) {
+		// family is not there.
+		if i > len(service.Spec.IPFamilies)-1 {
 			if isIPv6 {
 				// first make sure that family(ip) is configured
 				if _, found := rs.serviceIPAllocatorsByFamily[api.IPv6Protocol]; !found {
@@ -902,23 +902,15 @@ func (rs *REST) tryDefaultValidateServiceClusterIPFields(service *api.Service) e
 		}
 	}
 
-	// Infer IPFamilyPolicy from IPFamilies[].  This block does not handle the
-	// final defaulting - that happens a bit later, after special-cases.
-	if service.Spec.IPFamilyPolicy == nil && len(service.Spec.IPFamilies) == 2 {
-		requireDualStack := api.IPFamilyPolicyRequireDualStack
-		service.Spec.IPFamilyPolicy = &requireDualStack
-	}
-
-	// Special-case: headless+selectorless
+	// default headless+selectorless
 	if len(service.Spec.ClusterIPs) > 0 && service.Spec.ClusterIPs[0] == api.ClusterIPNone && len(service.Spec.Selector) == 0 {
-		// If the use said nothing about policy and we can't infer it, they get dual-stack
+
 		if service.Spec.IPFamilyPolicy == nil {
 			requireDualStack := api.IPFamilyPolicyRequireDualStack
 			service.Spec.IPFamilyPolicy = &requireDualStack
 		}
 
-		// If IPFamilies was not set by the user, start with the default
-		// family.
+		// if not set by user
 		if len(service.Spec.IPFamilies) == 0 {
 			service.Spec.IPFamilies = []api.IPFamily{rs.defaultServiceIPFamily}
 		}
@@ -927,7 +919,8 @@ func (rs *REST) tryDefaultValidateServiceClusterIPFields(service *api.Service) e
 		// cluster the user is allowed to create headless services that has multi families
 		// the validation allows it
 		if len(service.Spec.IPFamilies) < 2 {
-			if *(service.Spec.IPFamilyPolicy) != api.IPFamilyPolicySingleStack {
+			if *(service.Spec.IPFamilyPolicy) == api.IPFamilyPolicyRequireDualStack ||
+				(*(service.Spec.IPFamilyPolicy) == api.IPFamilyPolicyPreferDualStack && len(rs.serviceIPAllocatorsByFamily) == 2) {
 				// add the alt ipfamily
 				if service.Spec.IPFamilies[0] == api.IPv4Protocol {
 					service.Spec.IPFamilies = append(service.Spec.IPFamilies, api.IPv6Protocol)
@@ -963,8 +956,8 @@ func (rs *REST) tryDefaultValidateServiceClusterIPFields(service *api.Service) e
 		return errors.NewInvalid(api.Kind("Service"), service.Name, el)
 	}
 
-	// Finally, if IPFamilyPolicy is *still* not set, we can default it to
-	// SingleStack. If there are any webhooks, they have already run.
+	// default ipFamilyPolicy to SingleStack. if there are
+	// web hooks, they must have already ran by now
 	if service.Spec.IPFamilyPolicy == nil {
 		singleStack := api.IPFamilyPolicySingleStack
 		service.Spec.IPFamilyPolicy = &singleStack

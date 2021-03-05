@@ -142,7 +142,6 @@ func TranslateInTreeSpecToCSI(spec *volume.Spec, translator InTreeToCSITranslato
 		return nil, fmt.Errorf("failed to translate in-tree pv to CSI: %v", err)
 	}
 	return &volume.Spec{
-		Migrated:                        true,
 		PersistentVolume:                csiPV,
 		ReadOnly:                        spec.ReadOnly,
 		InlineVolumeSpecForCSIMigration: inlineVolume,

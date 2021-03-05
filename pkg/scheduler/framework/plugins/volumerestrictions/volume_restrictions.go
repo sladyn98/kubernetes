@@ -21,7 +21,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -90,10 +89,10 @@ func haveOverlap(a1, a2 []string) bool {
 	if len(a1) > len(a2) {
 		a1, a2 = a2, a1
 	}
-	m := make(sets.String)
+	m := map[string]bool{}
 
 	for _, val := range a1 {
-		m.Insert(val)
+		m[val] = true
 	}
 	for _, val := range a2 {
 		if _, ok := m[val]; ok {

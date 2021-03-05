@@ -32,12 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/network/common"
 
 	"github.com/onsi/ginkgo"
 )
 
-var _ = common.SIGDescribe("IngressClass [Feature:Ingress]", func() {
+var _ = SIGDescribe("IngressClass [Feature:Ingress]", func() {
 	f := framework.NewDefaultFramework("ingressclass")
 	var cs clientset.Interface
 	ginkgo.BeforeEach(func() {
@@ -143,7 +142,7 @@ func deleteIngressClass(cs clientset.Interface, name string) {
 	framework.ExpectNoError(err)
 }
 
-var _ = common.SIGDescribe("IngressClass API", func() {
+var _ = SIGDescribe("IngressClass API", func() {
 	f := framework.NewDefaultFramework("ingressclass")
 	var cs clientset.Interface
 	ginkgo.BeforeEach(func() {

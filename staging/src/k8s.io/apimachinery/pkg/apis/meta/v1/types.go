@@ -99,16 +99,10 @@ type ListMeta struct {
 	RemainingItemCount *int64 `json:"remainingItemCount,omitempty" protobuf:"bytes,4,opt,name=remainingItemCount"`
 }
 
-// Field path constants that are specific to the internal API
-// representation.
-const (
-	ObjectNameField = "metadata.name"
-)
-
 // These are internal finalizer values for Kubernetes-like APIs, must be qualified name unless defined here
 const (
-	FinalizerOrphanDependents = "orphan"
-	FinalizerDeleteDependents = "foregroundDeletion"
+	FinalizerOrphanDependents string = "orphan"
+	FinalizerDeleteDependents string = "foregroundDeletion"
 )
 
 // ObjectMeta is metadata that all persisted resources must have, which includes all objects
@@ -289,15 +283,15 @@ type ObjectMeta struct {
 
 const (
 	// NamespaceDefault means the object is in the default namespace which is applied when not specified by clients
-	NamespaceDefault = "default"
+	NamespaceDefault string = "default"
 	// NamespaceAll is the default argument to specify on a context when you want to list or filter resources across all namespaces
-	NamespaceAll = ""
+	NamespaceAll string = ""
 	// NamespaceNone is the argument for a context when there is no namespace.
-	NamespaceNone = ""
+	NamespaceNone string = ""
 	// NamespaceSystem is the system namespace where we place system components.
-	NamespaceSystem = "kube-system"
+	NamespaceSystem string = "kube-system"
 	// NamespacePublic is the namespace where we place public info (ConfigMaps)
-	NamespacePublic = "kube-public"
+	NamespacePublic string = "kube-public"
 )
 
 // OwnerReference contains enough information to let you identify an owning

@@ -24,9 +24,6 @@ spec:
             - "-v=5"
             # Needed for fsGroup support.
             - "--default-fstype=ext4"
-            # We don't need much concurrency and having many gouroutines
-            # makes klog.Fatal during shutdown very long.
-            - "--worker-threads=5"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -53,7 +50,7 @@ spec:
           - mountPath: /registration
             name: registration-dir
         - name: mock
-          image: k8s.gcr.io/sig-storage/mock-driver:v4.1.0
+          image: k8s.gcr.io/sig-storage/mock-driver:v4.0.2
           args:
             - "--name=mock.storage.k8s.io"
             - "-v=3" # enabled the gRPC call logging
@@ -71,9 +68,10 @@ spec:
             - mountPath: /csi
               name: socket-dir
             - mountPath: /var/lib/kubelet/pods
-              name: kubelet-pods-dir
-            - mountPath: /var/lib/kubelet/plugins/kubernetes.io/csi
-              name: kubelet-csi-dir
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - name: hooks
+              mountPath: /etc/hooks
       volumes:
         - hostPath:
             path: /var/lib/kubelet/plugins/csi-mock
@@ -81,15 +79,12 @@ spec:
           name: socket-dir
         - hostPath:
             path: /var/lib/kubelet/pods
-            type: Directory
-            # mock driver doesn't make mounts and therefore doesn't need mount propagation.
-            # mountPropagation: Bidirectional
-          name: kubelet-pods-dir
-        - hostPath:
-            path: /var/lib/kubelet/plugins/kubernetes.io/csi
             type: DirectoryOrCreate
-          name: kubelet-csi-dir
+          name: mountpoint-dir
         - hostPath:
             path: /var/lib/kubelet/plugins_registry
             type: Directory
           name: registration-dir
+        - name: hooks
+          configMap:
+            name: mock-driver-hooks

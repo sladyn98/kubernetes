@@ -42,7 +42,6 @@ spec:
   ipFamilies:
   - 斬³;Ơ歿:狞夌碕ʂɭîcP$Iņɖ
   ipFamilyPolicy: 9ȫŚ
-  loadBalancerClass: "31"
   loadBalancerIP: "27"
   loadBalancerSourceRanges:
   - "28"
@@ -66,16 +65,16 @@ spec:
 status:
   conditions:
   - lastTransitionTime: "2392-12-09T15:37:55Z"
-    message: "37"
+    message: "36"
     observedGeneration: -2492120148461555858
-    reason: "36"
+    reason: "35"
     status: C
-    type: "35"
+    type: "34"
   loadBalancer:
     ingress:
-    - hostname: "33"
-      ip: "32"
+    - hostname: "32"
+      ip: "31"
       ports:
-      - error: "34"
+      - error: "33"
         port: -907310967
         protocol: 喂ƈ斎AO6

@@ -38,7 +38,6 @@ import (
 	"github.com/pkg/errors"
 	netutil "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/validation"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 	kubeadmversion "k8s.io/component-base/version"
 	"k8s.io/klog/v2"
@@ -403,12 +402,8 @@ func (HostnameCheck) Name() string {
 }
 
 // Check validates if hostname match dns sub domain regex.
-// Check hostname length and format
 func (hc HostnameCheck) Check() (warnings, errorList []error) {
-	klog.V(1).Infoln("checking whether the given node name is valid and reachable using net.LookupHost")
-	for _, msg := range validation.IsQualifiedName(hc.nodeName) {
-		warnings = append(warnings, errors.Errorf("invalid node name format %q: %s", hc.nodeName, msg))
-	}
+	klog.V(1).Infoln("checking whether the given node name is reachable using net.LookupHost")
 
 	addr, err := net.LookupHost(hc.nodeName)
 	if addr == nil {

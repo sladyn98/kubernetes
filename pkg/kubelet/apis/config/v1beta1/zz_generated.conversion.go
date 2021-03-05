@@ -365,12 +365,6 @@ func autoConvert_v1beta1_KubeletConfiguration_To_config_KubeletConfiguration(in 
 	out.ShutdownGracePeriod = in.ShutdownGracePeriod
 	out.ShutdownGracePeriodCriticalPods = in.ShutdownGracePeriodCriticalPods
 	out.ReservedMemory = *(*[]config.MemoryReservation)(unsafe.Pointer(&in.ReservedMemory))
-	if err := v1.Convert_Pointer_bool_To_bool(&in.EnableProfilingHandler, &out.EnableProfilingHandler, s); err != nil {
-		return err
-	}
-	if err := v1.Convert_Pointer_bool_To_bool(&in.EnableDebugFlagsHandler, &out.EnableDebugFlagsHandler, s); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -526,12 +520,6 @@ func autoConvert_config_KubeletConfiguration_To_v1beta1_KubeletConfiguration(in 
 	out.ShutdownGracePeriod = in.ShutdownGracePeriod
 	out.ShutdownGracePeriodCriticalPods = in.ShutdownGracePeriodCriticalPods
 	out.ReservedMemory = *(*[]v1beta1.MemoryReservation)(unsafe.Pointer(&in.ReservedMemory))
-	if err := v1.Convert_bool_To_Pointer_bool(&in.EnableProfilingHandler, &out.EnableProfilingHandler, s); err != nil {
-		return err
-	}
-	if err := v1.Convert_bool_To_Pointer_bool(&in.EnableDebugFlagsHandler, &out.EnableDebugFlagsHandler, s); err != nil {
-		return err
-	}
 	return nil
 }
 

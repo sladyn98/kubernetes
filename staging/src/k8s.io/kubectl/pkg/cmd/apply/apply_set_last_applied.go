@@ -128,7 +128,11 @@ func (o *SetLastAppliedOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) 
 	if err != nil {
 		return err
 	}
-	o.dryRunVerifier = resource.NewDryRunVerifier(dynamicClient, f.OpenAPIGetter())
+	discoveryClient, err := f.ToDiscoveryClient()
+	if err != nil {
+		return err
+	}
+	o.dryRunVerifier = resource.NewDryRunVerifier(dynamicClient, discoveryClient)
 	o.output = cmdutil.GetFlagString(cmd, "output")
 	o.shortOutput = o.output == "name"
 

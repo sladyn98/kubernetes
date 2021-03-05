@@ -67,7 +67,6 @@ func startDisruptionController(ctx ControllerContext) (http.Handler, bool, error
 		client,
 		ctx.RESTMapper,
 		scaleClient,
-		client.Discovery(),
 	).Run(ctx.Stop)
 	return nil, true, nil
 }

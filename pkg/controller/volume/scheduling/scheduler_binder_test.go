@@ -77,11 +77,6 @@ var (
 	boundMigrationPVC     = makeTestPVC("pvc-migration-bound", "1G", "", pvcBound, "pv-migration-bound", "1", &waitClass)
 	provMigrationPVCBound = makeTestPVC("pvc-migration-provisioned", "1Gi", "", pvcBound, "pv-migration-bound", "1", &waitClassWithProvisioner)
 
-	// PVCs and PV for GenericEphemeralVolume
-	conflictingGenericPVC = makeGenericEphemeralPVC("test-volume", false /* not owned*/)
-	correctGenericPVC     = makeGenericEphemeralPVC("test-volume", true /* owned */)
-	pvBoundGeneric        = makeTestPV("pv-bound", "node1", "1G", "1", correctGenericPVC, waitClass)
-
 	// PVs for manual binding
 	pvNode1a                   = makeTestPV("pv-node1a", "node1", "5G", "1", nil, waitClass)
 	pvNode1b                   = makeTestPV("pv-node1b", "node1", "10G", "1", nil, waitClass)
@@ -588,22 +583,6 @@ const (
 	pvcSelectedNode
 )
 
-func makeGenericEphemeralPVC(volumeName string, owned bool) *v1.PersistentVolumeClaim {
-	pod := makePodWithGenericEphemeral()
-	pvc := makeTestPVC(pod.Name+"-"+volumeName, "1G", "", pvcBound, "pv-bound", "1", &immediateClass)
-	if owned {
-		controller := true
-		pvc.OwnerReferences = []metav1.OwnerReference{
-			{
-				Name:       pod.Name,
-				UID:        pod.UID,
-				Controller: &controller,
-			},
-		}
-	}
-	return pvc
-}
-
 func makeTestPVC(name, size, node string, pvcBoundState int, pvName, resourceVersion string, className *string) *v1.PersistentVolumeClaim {
 	fs := v1.PersistentVolumeFilesystem
 	pvc := &v1.PersistentVolumeClaim{
@@ -805,21 +784,8 @@ func makePodWithoutPVC() *v1.Pod {
 	return pod
 }
 
-func makePodWithGenericEphemeral(volumeNames ...string) *v1.Pod {
-	pod := makePod(nil)
-	for _, volumeName := range volumeNames {
-		pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
-			Name: volumeName,
-			VolumeSource: v1.VolumeSource{
-				Ephemeral: &v1.EphemeralVolumeSource{},
-			},
-		})
-	}
-	return pod
-}
-
 func makeBinding(pvc *v1.PersistentVolumeClaim, pv *v1.PersistentVolume) *BindingInfo {
-	return &BindingInfo{pvc: pvc.DeepCopy(), pv: pv.DeepCopy()}
+	return &BindingInfo{pvc: pvc, pv: pv}
 }
 
 func addProvisionAnn(pvc *v1.PersistentVolumeClaim) *v1.PersistentVolumeClaim {
@@ -880,8 +846,6 @@ func findPodVolumes(binder SchedulerVolumeBinder, pod *v1.Pod, node *v1.Node) (*
 }
 
 func TestFindPodVolumesWithoutProvisioning(t *testing.T) {
-	t.Parallel()
-
 	type scenarioType struct {
 		// Inputs
 		pvs     []*v1.PersistentVolume
@@ -890,9 +854,6 @@ func TestFindPodVolumesWithoutProvisioning(t *testing.T) {
 		cachePVCs []*v1.PersistentVolumeClaim
 		// If nil, makePod with podPVCs
 		pod *v1.Pod
-
-		// GenericEphemeralVolume feature enabled?
-		ephemeral bool
 
 		// Expected podBindingCache fields
 		expectedBindings []*BindingInfo
@@ -990,31 +951,6 @@ func TestFindPodVolumesWithoutProvisioning(t *testing.T) {
 			podPVCs:    []*v1.PersistentVolumeClaim{immediateUnboundPVC, unboundPVC},
 			shouldFail: true,
 		},
-		"generic-ephemeral,no-pvc": {
-			pod:        makePodWithGenericEphemeral("no-such-pvc"),
-			ephemeral:  true,
-			shouldFail: true,
-		},
-		"generic-ephemeral,with-pvc": {
-			pod:       makePodWithGenericEphemeral("test-volume"),
-			cachePVCs: []*v1.PersistentVolumeClaim{correctGenericPVC},
-			pvs:       []*v1.PersistentVolume{pvBoundGeneric},
-			ephemeral: true,
-		},
-		"generic-ephemeral,wrong-pvc": {
-			pod:        makePodWithGenericEphemeral("test-volume"),
-			cachePVCs:  []*v1.PersistentVolumeClaim{conflictingGenericPVC},
-			pvs:        []*v1.PersistentVolume{pvBoundGeneric},
-			ephemeral:  true,
-			shouldFail: true,
-		},
-		"generic-ephemeral,disabled": {
-			pod:        makePodWithGenericEphemeral("test-volume"),
-			cachePVCs:  []*v1.PersistentVolumeClaim{correctGenericPVC},
-			pvs:        []*v1.PersistentVolume{pvBoundGeneric},
-			ephemeral:  false,
-			shouldFail: true,
-		},
 	}
 
 	testNode := &v1.Node{
@@ -1027,8 +963,6 @@ func TestFindPodVolumesWithoutProvisioning(t *testing.T) {
 	}
 
 	run := func(t *testing.T, scenario scenarioType, csiStorageCapacity bool, csiDriver *storagev1.CSIDriver) {
-		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.GenericEphemeralVolume, scenario.ephemeral)()
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -1082,8 +1016,6 @@ func TestFindPodVolumesWithoutProvisioning(t *testing.T) {
 }
 
 func TestFindPodVolumesWithProvisioning(t *testing.T) {
-	t.Parallel()
-
 	type scenarioType struct {
 		// Inputs
 		pvs     []*v1.PersistentVolume
@@ -1595,8 +1527,6 @@ func TestBindAPIUpdate(t *testing.T) {
 }
 
 func TestCheckBindings(t *testing.T) {
-	t.Parallel()
-
 	type scenarioType struct {
 		// Inputs
 		initPVs  []*v1.PersistentVolume
@@ -1794,8 +1724,6 @@ func TestCheckBindings(t *testing.T) {
 }
 
 func TestCheckBindingsWithCSIMigration(t *testing.T) {
-	t.Parallel()
-
 	type scenarioType struct {
 		// Inputs
 		initPVs      []*v1.PersistentVolume
@@ -1916,8 +1844,6 @@ func TestCheckBindingsWithCSIMigration(t *testing.T) {
 }
 
 func TestBindPodVolumes(t *testing.T) {
-	t.Parallel()
-
 	type scenarioType struct {
 		// Inputs
 		bindingsNil bool // Pass in nil bindings slice
@@ -2127,11 +2053,7 @@ func TestBindPodVolumes(t *testing.T) {
 	}
 
 	for name, scenario := range scenarios {
-		scenario := scenario
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			run(t, scenario)
-		})
+		t.Run(name, func(t *testing.T) { run(t, scenario) })
 	}
 }
 
@@ -2279,14 +2201,14 @@ func TestCapacity(t *testing.T) {
 		},
 	}
 
-	run := func(t *testing.T, scenario scenarioType, featureEnabled, optIn bool) {
-		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIStorageCapacity, featureEnabled)()
+	run := func(t *testing.T, scenario scenarioType) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		// Setup: the driver has the feature enabled, but the scheduler might not.
-		testEnv := newTestBinder(t, ctx.Done(), featureEnabled)
-		testEnv.addCSIDriver(makeCSIDriver(provisioner, optIn))
+		// Setup
+		withCSIStorageCapacity := true
+		testEnv := newTestBinder(t, ctx.Done(), withCSIStorageCapacity)
+		testEnv.addCSIDriver(makeCSIDriver(provisioner, withCSIStorageCapacity))
 		testEnv.addCSIStorageCapacities(scenario.capacities)
 
 		// a. Init pvc cache
@@ -2299,19 +2221,13 @@ func TestCapacity(t *testing.T) {
 		podVolumes, reasons, err := findPodVolumes(testEnv.binder, pod, testNode)
 
 		// Validate
-		shouldFail := scenario.shouldFail
-		expectedReasons := scenario.reasons
-		if !featureEnabled || !optIn {
-			shouldFail = false
-			expectedReasons = nil
-		}
-		if !shouldFail && err != nil {
+		if !scenario.shouldFail && err != nil {
 			t.Errorf("returned error: %v", err)
 		}
-		if shouldFail && err == nil {
+		if scenario.shouldFail && err == nil {
 			t.Error("returned success but expected error")
 		}
-		checkReasons(t, reasons, expectedReasons)
+		checkReasons(t, reasons, scenario.reasons)
 		provisions := scenario.pvcs
 		if len(reasons) > 0 {
 			provisions = nil
@@ -2319,18 +2235,7 @@ func TestCapacity(t *testing.T) {
 		testEnv.validatePodCache(t, pod.Spec.NodeName, pod, podVolumes, nil, provisions)
 	}
 
-	yesNo := []bool{true, false}
-	for _, featureEnabled := range yesNo {
-		name := fmt.Sprintf("CSIStorageCapacity=%v", featureEnabled)
-		t.Run(name, func(t *testing.T) {
-			for _, optIn := range yesNo {
-				name := fmt.Sprintf("CSIDriver.StorageCapacity=%v", optIn)
-				t.Run(name, func(t *testing.T) {
-					for name, scenario := range scenarios {
-						t.Run(name, func(t *testing.T) { run(t, scenario, featureEnabled, optIn) })
-					}
-				})
-			}
-		})
+	for name, scenario := range scenarios {
+		t.Run(name, func(t *testing.T) { run(t, scenario) })
 	}
 }

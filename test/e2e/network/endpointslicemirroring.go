@@ -28,10 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/network/common"
 )
 
-var _ = common.SIGDescribe("EndpointSliceMirroring", func() {
+var _ = SIGDescribe("EndpointSliceMirroring", func() {
 	f := framework.NewDefaultFramework("endpointslicemirroring")
 
 	var cs clientset.Interface

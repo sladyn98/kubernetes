@@ -41,7 +41,6 @@ import (
 	"k8s.io/kubectl/pkg/scheme"
 	"k8s.io/kubernetes/pkg/controller"
 	jobutil "k8s.io/kubernetes/pkg/controller/job"
-	"k8s.io/kubernetes/pkg/controller/ttlafterfinished/metrics"
 )
 
 // Controller watches for changes of Jobs API objects. Triggered by Job creation
@@ -79,8 +78,6 @@ func New(jobInformer batchinformers.JobInformer, client clientset.Interface) *Co
 	if client != nil && client.CoreV1().RESTClient().GetRateLimiter() != nil {
 		ratelimiter.RegisterMetricAndTrackRateLimiterUsage("ttl_after_finished_controller", client.CoreV1().RESTClient().GetRateLimiter())
 	}
-
-	metrics.Register()
 
 	tc := &Controller{
 		client:   client,
@@ -208,9 +205,9 @@ func (tc *Controller) processJob(key string) error {
 		return err
 	}
 
-	if expiredAt, err := tc.processTTL(job); err != nil {
+	if expired, err := tc.processTTL(job); err != nil {
 		return err
-	} else if expiredAt == nil {
+	} else if !expired {
 		return nil
 	}
 
@@ -226,10 +223,9 @@ func (tc *Controller) processJob(key string) error {
 		return err
 	}
 	// Use the latest Job TTL to see if the TTL truly expires.
-	expiredAt, err := tc.processTTL(fresh)
-	if err != nil {
+	if expired, err := tc.processTTL(fresh); err != nil {
 		return err
-	} else if expiredAt == nil {
+	} else if !expired {
 		return nil
 	}
 	// Cascade deletes the Jobs if TTL truly expires.
@@ -239,34 +235,30 @@ func (tc *Controller) processJob(key string) error {
 		Preconditions:     &metav1.Preconditions{UID: &fresh.UID},
 	}
 	klog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
-	if err := tc.client.BatchV1().Jobs(fresh.Namespace).Delete(context.TODO(), fresh.Name, options); err != nil {
-		return err
-	}
-	metrics.JobDeletionDurationSeconds.Observe(time.Since(*expiredAt).Seconds())
-	return nil
+	return tc.client.BatchV1().Jobs(fresh.Namespace).Delete(context.TODO(), fresh.Name, options)
 }
 
 // processTTL checks whether a given Job's TTL has expired, and add it to the queue after the TTL is expected to expire
 // if the TTL will expire later.
-func (tc *Controller) processTTL(job *batch.Job) (expiredAt *time.Time, err error) {
+func (tc *Controller) processTTL(job *batch.Job) (expired bool, err error) {
 	// We don't care about the Jobs that are going to be deleted, or the ones that don't need clean up.
 	if job.DeletionTimestamp != nil || !needsCleanup(job) {
-		return nil, nil
+		return false, nil
 	}
 
 	now := tc.clock.Now()
-	t, e, err := timeLeft(job, &now)
+	t, err := timeLeft(job, &now)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	// TTL has expired
 	if *t <= 0 {
-		return e, nil
+		return true, nil
 	}
 
 	tc.enqueueAfter(job, *t)
-	return nil, nil
+	return false, nil
 }
 
 // needsCleanup checks whether a Job has finished and has a TTL set.
@@ -278,26 +270,26 @@ func getFinishAndExpireTime(j *batch.Job) (*time.Time, *time.Time, error) {
 	if !needsCleanup(j) {
 		return nil, nil, fmt.Errorf("job %s/%s should not be cleaned up", j.Namespace, j.Name)
 	}
-	t, err := jobFinishTime(j)
+	finishAt, err := jobFinishTime(j)
 	if err != nil {
 		return nil, nil, err
 	}
-	finishAt := t.Time
-	expireAt := finishAt.Add(time.Duration(*j.Spec.TTLSecondsAfterFinished) * time.Second)
-	return &finishAt, &expireAt, nil
+	finishAtUTC := finishAt.UTC()
+	expireAtUTC := finishAtUTC.Add(time.Duration(*j.Spec.TTLSecondsAfterFinished) * time.Second)
+	return &finishAtUTC, &expireAtUTC, nil
 }
 
-func timeLeft(j *batch.Job, since *time.Time) (*time.Duration, *time.Time, error) {
+func timeLeft(j *batch.Job, since *time.Time) (*time.Duration, error) {
 	finishAt, expireAt, err := getFinishAndExpireTime(j)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if finishAt.After(*since) {
+	if finishAt.UTC().After(since.UTC()) {
 		klog.Warningf("Warning: Found Job %s/%s finished in the future. This is likely due to time skew in the cluster. Job cleanup will be deferred.", j.Namespace, j.Name)
 	}
-	remaining := expireAt.Sub(*since)
+	remaining := expireAt.UTC().Sub(since.UTC())
 	klog.V(4).Infof("Found Job %s/%s finished at %v, remaining TTL %v since %v, TTL will expire at %v", j.Namespace, j.Name, finishAt.UTC(), remaining, since.UTC(), expireAt.UTC())
-	return &remaining, expireAt, nil
+	return &remaining, nil
 }
 
 // jobFinishTime takes an already finished Job and returns the time it finishes.

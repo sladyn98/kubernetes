@@ -3,9 +3,11 @@
 reviewers:
   - bowei
   - cjcullen
+  - gmarek
   - vishh
   - mwielgus
   - MaciekPytel
+  - jingax10
   - yujuhong
   - mtaufen
   - jeremyje
@@ -13,16 +15,16 @@ reviewers:
 approvers:
   - bowei
   - cjcullen
+  - gmarek
   - vishh
   - mwielgus
   - MaciekPytel
+  - jingax10
   - yujuhong
   - mtaufen
   - jeremyje
   - sig-scalability-approvers
 emeritus_approvers:
-  - gmarek
-  - jingax10
   - jszczepkowski
 labels:
 - sig/cloud-provider

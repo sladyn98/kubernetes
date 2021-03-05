@@ -2,7 +2,7 @@
 
 module k8s.io/legacy-cloud-providers
 
-go 1.16
+go 1.15
 
 require (
 	cloud.google.com/go v0.54.0
@@ -14,7 +14,6 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.1.0 // indirect
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20200415212048-7901bc822317
 	github.com/aws/aws-sdk-go v1.35.24
-	github.com/blang/semver v3.5.1+incompatible
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/golang/mock v1.4.4
 	github.com/google/go-cmp v0.5.2
@@ -24,7 +23,7 @@ require (
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/vmware/govmomi v0.20.3
-	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
+	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	google.golang.org/api v0.20.0
 	gopkg.in/gcfg.v1 v1.2.0

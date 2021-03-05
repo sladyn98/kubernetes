@@ -166,7 +166,8 @@ var _ = SIGDescribe("DNS horizontal autoscaling", func() {
 		framework.ExpectNoError(err)
 	})
 
-	ginkgo.It("kube-dns-autoscaler should scale kube-dns pods in both nonfaulty and faulty scenarios", func() {
+	// TODO: Get rid of [DisabledForLargeClusters] tag when issue #55779 is fixed.
+	ginkgo.It("[DisabledForLargeClusters] kube-dns-autoscaler should scale kube-dns pods in both nonfaulty and faulty scenarios", func() {
 
 		ginkgo.By("Replace the dns autoscaling parameters with testing parameters")
 		err := updateDNSScalingConfigMap(c, packDNSScalingConfigMap(packLinearParams(&DNSParams1)))

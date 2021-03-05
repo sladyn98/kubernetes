@@ -18,6 +18,7 @@ package upgrade
 
 import (
 	"context"
+	"fmt"
 	"github.com/pkg/errors"
 
 	"k8s.io/api/core/v1"
@@ -133,7 +134,11 @@ func NewOfflineVersionGetter(versionGetter VersionGetter, version string) Versio
 // VersionFromCILabel will return the version that was passed into the struct
 func (o *OfflineVersionGetter) VersionFromCILabel(ciVersionLabel, description string) (string, *versionutil.Version, error) {
 	if o.version == "" {
-		return o.VersionGetter.VersionFromCILabel(ciVersionLabel, description)
+		versionStr, version, err := o.VersionGetter.VersionFromCILabel(ciVersionLabel, description)
+		if err == nil {
+			fmt.Printf("[upgrade/versions] Latest %s: %s\n", description, versionStr)
+		}
+		return versionStr, version, err
 	}
 	ver, err := versionutil.ParseSemantic(o.version)
 	if err != nil {

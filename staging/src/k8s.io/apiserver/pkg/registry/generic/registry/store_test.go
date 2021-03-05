@@ -62,6 +62,8 @@ import (
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 
+const validInitializerName = "test.k8s.io"
+
 func init() {
 	metav1.AddToGroupVersion(scheme, metav1.SchemeGroupVersion)
 	utilruntime.Must(example.AddToScheme(scheme))
@@ -263,7 +265,7 @@ func TestStoreListResourceVersion(t *testing.T) {
 		l, err := registry.List(ctx, option)
 		if err != nil {
 			close(waitListCh)
-			t.Error(err)
+			t.Fatal(err)
 			return
 		}
 		waitListCh <- l
@@ -2060,7 +2062,7 @@ func TestStoreDeleteCollectionNotFound(t *testing.T) {
 				defer wg.Done()
 				_, err := registry.DeleteCollection(testContext, rest.ValidateAllObjectFunc, nil, &metainternalversion.ListOptions{})
 				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
+					t.Fatalf("Unexpected error: %v", err)
 				}
 			}()
 		}
@@ -2648,7 +2650,7 @@ func TestRetryDeleteValidation(t *testing.T) {
 			// This update will cause the Delete to retry due to conflict.
 			_, _, err := registry.Update(testContext, test.pod.Name, rest.DefaultUpdatedObjectInfo(test.pod, transformer), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc, false, &metav1.UpdateOptions{})
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			updatedOnce.Do(func() {
 				close(updated)

@@ -207,15 +207,10 @@ func (a *azureFileProvisioner) Provision(selectedNode *v1.Node, allowedTopologie
 		resourceGroup = a.options.PVC.ObjectMeta.Annotations[resourceGroupAnnotation]
 	}
 
-	fileShareSize := int(requestGiB)
 	// when use azure file premium, account kind should be specified as FileStorage
 	accountKind := string(storage.StorageV2)
 	if strings.HasPrefix(strings.ToLower(sku), "premium") {
 		accountKind = string(storage.FileStorage)
-		// when using azure file premium, the shares have a minimum size
-		if fileShareSize < minimumPremiumShareSize {
-			fileShareSize = minimumPremiumShareSize
-		}
 	}
 
 	accountOptions := &azure.AccountOptions{
@@ -230,7 +225,7 @@ func (a *azureFileProvisioner) Provision(selectedNode *v1.Node, allowedTopologie
 	shareOptions := &fileclient.ShareOptions{
 		Name:       shareName,
 		Protocol:   storage.SMB,
-		RequestGiB: fileShareSize,
+		RequestGiB: requestGiB,
 	}
 
 	account, key, err := a.azureProvider.CreateFileShare(accountOptions, shareOptions)
@@ -257,7 +252,7 @@ func (a *azureFileProvisioner) Provision(selectedNode *v1.Node, allowedTopologie
 			PersistentVolumeReclaimPolicy: a.options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   a.options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): resource.MustParse(fmt.Sprintf("%dGi", fileShareSize)),
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(fmt.Sprintf("%dGi", requestGiB)),
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				AzureFile: &v1.AzureFilePersistentVolumeSource{

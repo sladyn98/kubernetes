@@ -40,22 +40,15 @@ const (
 	checkSleepDuration = time.Second
 	diskByIDPath       = "/dev/disk/by-id/"
 	diskSCSIPrefix     = "wwn-0x"
-	// diskformat parameter is deprecated as of Kubernetes v1.21.0
-	diskformat        = "diskformat"
-	datastore         = "datastore"
-	StoragePolicyName = "storagepolicyname"
+	diskformat         = "diskformat"
+	datastore          = "datastore"
+	StoragePolicyName  = "storagepolicyname"
 
-	// hostfailurestotolerate parameter is deprecated as of Kubernetes v1.19.0
-	HostFailuresToTolerateCapability = "hostfailurestotolerate"
-	// forceprovisioning parameter is deprecated as of Kubernetes v1.19.0
-	ForceProvisioningCapability = "forceprovisioning"
-	// cachereservation parameter is deprecated as of Kubernetes v1.19.0
-	CacheReservationCapability = "cachereservation"
-	// diskstripes parameter is deprecated as of Kubernetes v1.19.0
-	DiskStripesCapability = "diskstripes"
-	// objectspacereservation parameter is deprecated as of Kubernetes v1.19.0
-	ObjectSpaceReservationCapability = "objectspacereservation"
-	// iopslimit parameter is deprecated as of Kubernetes v1.19.0
+	HostFailuresToTolerateCapability    = "hostfailurestotolerate"
+	ForceProvisioningCapability         = "forceprovisioning"
+	CacheReservationCapability          = "cachereservation"
+	DiskStripesCapability               = "diskstripes"
+	ObjectSpaceReservationCapability    = "objectspacereservation"
 	IopsLimitCapability                 = "iopslimit"
 	HostFailuresToTolerateCapabilityMin = 0
 	HostFailuresToTolerateCapabilityMax = 3

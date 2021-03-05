@@ -27,7 +27,6 @@ import (
 	storage "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -203,7 +202,7 @@ func (pl *nonCSILimits) Filter(ctx context.Context, _ *framework.CycleState, pod
 		return nil
 	}
 
-	newVolumes := make(sets.String)
+	newVolumes := make(map[string]bool)
 	if err := pl.filterVolumes(pod.Spec.Volumes, pod.Namespace, newVolumes); err != nil {
 		return framework.AsStatus(err)
 	}
@@ -235,7 +234,7 @@ func (pl *nonCSILimits) Filter(ctx context.Context, _ *framework.CycleState, pod
 	}
 
 	// count unique volumes
-	existingVolumes := make(sets.String)
+	existingVolumes := make(map[string]bool)
 	for _, existingPod := range nodeInfo.Pods {
 		if err := pl.filterVolumes(existingPod.Pod.Spec.Volumes, existingPod.Pod.Namespace, existingVolumes); err != nil {
 			return framework.AsStatus(err)
@@ -267,11 +266,11 @@ func (pl *nonCSILimits) Filter(ctx context.Context, _ *framework.CycleState, pod
 	return nil
 }
 
-func (pl *nonCSILimits) filterVolumes(volumes []v1.Volume, namespace string, filteredVolumes sets.String) error {
+func (pl *nonCSILimits) filterVolumes(volumes []v1.Volume, namespace string, filteredVolumes map[string]bool) error {
 	for i := range volumes {
 		vol := &volumes[i]
 		if id, ok := pl.filter.FilterVolume(vol); ok {
-			filteredVolumes.Insert(id)
+			filteredVolumes[id] = true
 		} else if vol.PersistentVolumeClaim != nil {
 			pvcName := vol.PersistentVolumeClaim.ClaimName
 			if pvcName == "" {
@@ -299,7 +298,7 @@ func (pl *nonCSILimits) filterVolumes(volumes []v1.Volume, namespace string, fil
 				// it belongs to the running predicate.
 				if pl.matchProvisioner(pvc) {
 					klog.V(4).Infof("PVC %s/%s is not bound, assuming PVC matches predicate when counting limits", namespace, pvcName)
-					filteredVolumes.Insert(pvID)
+					filteredVolumes[pvID] = true
 				}
 				continue
 			}
@@ -310,13 +309,13 @@ func (pl *nonCSILimits) filterVolumes(volumes []v1.Volume, namespace string, fil
 				// log the error and count the PV towards the PV limit.
 				if pl.matchProvisioner(pvc) {
 					klog.V(4).Infof("Unable to look up PV info for %s/%s/%s, assuming PV matches predicate when counting limits: %v", namespace, pvcName, pvName, err)
-					filteredVolumes.Insert(pvID)
+					filteredVolumes[pvID] = true
 				}
 				continue
 			}
 
 			if id, ok := pl.filter.FilterPersistentVolume(pv); ok {
-				filteredVolumes.Insert(id)
+				filteredVolumes[id] = true
 			}
 		}
 	}

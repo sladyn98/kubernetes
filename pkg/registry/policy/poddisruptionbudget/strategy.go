@@ -21,9 +21,7 @@ import (
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/policy"
@@ -111,13 +109,7 @@ func (podDisruptionBudgetStatusStrategy) PrepareForUpdate(ctx context.Context, o
 
 // ValidateUpdate is the default update validation for an end user updating status
 func (podDisruptionBudgetStatusStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) field.ErrorList {
-	var apiVersion schema.GroupVersion
-	if requestInfo, found := genericapirequest.RequestInfoFrom(ctx); found {
-		apiVersion = schema.GroupVersion{
-			Group:   requestInfo.APIVersion,
-			Version: requestInfo.APIGroup,
-		}
-	}
-	return validation.ValidatePodDisruptionBudgetStatusUpdate(obj.(*policy.PodDisruptionBudget).Status,
-		old.(*policy.PodDisruptionBudget).Status, field.NewPath("status"), apiVersion)
+	// TODO: Validate status updates.
+	return field.ErrorList{}
+	// return validation.ValidatePodDisruptionBudgetStatusUpdate(obj.(*policy.PodDisruptionBudget), old.(*policy.PodDisruptionBudget))
 }

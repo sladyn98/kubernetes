@@ -53,7 +53,6 @@ func (in *GenericControllerManagerConfiguration) DeepCopyInto(out *GenericContro
 		copy(*out, *in)
 	}
 	in.Debugging.DeepCopyInto(&out.Debugging)
-	in.LeaderMigration.DeepCopyInto(&out.LeaderMigration)
 	return
 }
 

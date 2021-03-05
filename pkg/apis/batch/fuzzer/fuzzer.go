@@ -18,6 +18,7 @@ package fuzzer
 
 import (
 	fuzz "github.com/google/gofuzz"
+
 	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/kubernetes/pkg/apis/batch"
 )
@@ -51,11 +52,6 @@ var Funcs = func(codecs runtimeserializer.CodecFactory) []interface{} {
 				j.ManualSelector = newBool(true)
 			} else {
 				j.ManualSelector = nil
-			}
-			if c.Rand.Int31()%2 == 0 {
-				j.CompletionMode = batch.NonIndexedCompletion
-			} else {
-				j.CompletionMode = batch.IndexedCompletion
 			}
 		},
 		func(sj *batch.CronJobSpec, c fuzz.Continue) {

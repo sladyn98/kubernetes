@@ -380,16 +380,13 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 		})
 		handler := newHandlerChain(t, requestHandler, controller, userName, requestTimeout)
 
-		server, requestGetter := newHTTP2ServerWithClient(handler, requestTimeout*2)
+		server, requestGetter := newHTTP2ServerWithClient(handler)
 		defer server.Close()
 
 		var err error
 		_, err = requestGetter(firstRequestPathPanic)
 		if !executed {
 			t.Errorf("Expected inner handler to be executed for request: %q", firstRequestPathPanic)
-		}
-		if isClientTimeout(err) {
-			t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", firstRequestPathPanic, err.Error())
 		}
 		expectResetStreamError(t, err)
 
@@ -417,9 +414,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 	})
 
 	t.Run("priority level concurrency is set to 1, request times out and inner handler hasn't written to the response yet", func(t *testing.T) {
-		t.Parallel()
 		const (
-			requestTimeout                                        = 5 * time.Second
+			requestTimeout                                        = 3 * time.Second
 			userName                                              = "alice"
 			fsName                                                = "test-fs"
 			plName                                                = "test-pl"
@@ -446,13 +442,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 		})
 		handler := newHandlerChain(t, requestHandler, controller, userName, requestTimeout)
 
-		server, requestGetter := newHTTP2ServerWithClient(handler, requestTimeout*2)
+		server, requestGetter := newHTTP2ServerWithClient(handler)
 		defer server.Close()
-
-		go hardStop(t, stopCh, requestTimeout*3, func() {
-			// the client timed out unexpectedly, let's clean up and abort.
-			close(reqHandlerCompletedCh)
-		})
 
 		var (
 			response *http.Response
@@ -463,9 +454,6 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 
 			t.Logf("Waiting for the request: %q to time out", rquestTimesOutPath)
 			response, err = requestGetter(rquestTimesOutPath)
-			if isClientTimeout(err) {
-				t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", rquestTimesOutPath, err.Error())
-			}
 		}()
 
 		if !executed {
@@ -491,9 +479,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 	})
 
 	t.Run("priority level concurrency is set to 1, inner handler panics after the request times out", func(t *testing.T) {
-		t.Parallel()
 		const (
-			requestTimeout                                        = 5 * time.Second
+			requestTimeout                                        = 3 * time.Second
 			userName                                              = "alice"
 			fsName                                                = "test-fs"
 			plName                                                = "test-pl"
@@ -524,13 +511,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 		})
 		handler := newHandlerChain(t, requestHandler, controller, userName, requestTimeout)
 
-		server, requestGetter := newHTTP2ServerWithClient(handler, requestTimeout*2)
+		server, requestGetter := newHTTP2ServerWithClient(handler)
 		defer server.Close()
-
-		go hardStop(t, stopCh, requestTimeout*3, func() {
-			// the client timed out unexpectedly, let's clean up and abort.
-			close(reqHandlerCompletedCh)
-		})
 
 		var (
 			response *http.Response
@@ -540,9 +522,6 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 			defer close(callerRoundTripDoneCh)
 			t.Logf("Waiting for the request: %q to time out", rquestTimesOutPath)
 			response, err = requestGetter(rquestTimesOutPath)
-			if isClientTimeout(err) {
-				t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", rquestTimesOutPath, err.Error())
-			}
 		}()
 
 		t.Logf("Waiting for the inner handler of the request: %q to complete", rquestTimesOutPath)
@@ -565,9 +544,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 	})
 
 	t.Run("priority level concurrency is set to 1, inner handler writes to the response before request times out", func(t *testing.T) {
-		t.Parallel()
 		const (
-			requestTimeout                                        = 5 * time.Second
+			requestTimeout                                        = 3 * time.Second
 			userName                                              = "alice"
 			fsName                                                = "test-fs"
 			plName                                                = "test-pl"
@@ -599,22 +577,14 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 		})
 		handler := newHandlerChain(t, requestHandler, controller, userName, requestTimeout)
 
-		server, requestGetter := newHTTP2ServerWithClient(handler, requestTimeout*2)
+		server, requestGetter := newHTTP2ServerWithClient(handler)
 		defer server.Close()
-
-		go hardStop(t, stopCh, requestTimeout*3, func() {
-			// the client timed out unexpectedly, let's clean up and abort.
-			close(reqHandlerCompletedCh)
-		})
 
 		var err error
 		func() {
 			defer close(callerRoundTripDoneCh)
 			t.Logf("Waiting for the request: %q to time out", rquestTimesOutPath)
 			_, err = requestGetter(rquestTimesOutPath)
-			if isClientTimeout(err) {
-				t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", rquestTimesOutPath, err.Error())
-			}
 		}()
 
 		t.Logf("Waiting for the inner handler of the request: %q to complete", rquestTimesOutPath)
@@ -632,9 +602,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 	})
 
 	t.Run("priority level concurrency is set to 1, queue length is 1, first request should time out and second (enqueued) request should time out as well", func(t *testing.T) {
-		t.Parallel()
 		const (
-			requestTimeout                                                     = 5 * time.Second
+			requestTimeout                                                     = 3 * time.Second
 			userName                                                           = "alice"
 			fsName                                                             = "test-fs"
 			plName                                                             = "test-pl"
@@ -677,14 +646,8 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 		})
 		handler := newHandlerChain(t, requestHandler, controller, userName, requestTimeout)
 
-		server, requestGetter := newHTTP2ServerWithClient(handler, requestTimeout*2)
+		server, requestGetter := newHTTP2ServerWithClient(handler)
 		defer server.Close()
-
-		go hardStop(t, stopCh, requestTimeout*3, func() {
-			// the client timed out unexpectedly, let's clean up and abort.
-			close(firstReqInProgressCh)
-			close(firstReqHandlerCompletedCh)
-		})
 
 		var firstReqErr, secondReqErr error
 		var resp1, resp2 *http.Response
@@ -692,9 +655,6 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 			defer close(firstReqRoundTripDoneCh)
 			t.Logf("Waiting for the request: %q to time out", firstRequestTimesOutPath)
 			resp1, firstReqErr = requestGetter(firstRequestTimesOutPath)
-			if isClientTimeout(firstReqErr) {
-				t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", firstRequestTimesOutPath, firstReqErr.Error())
-			}
 		}()
 		func() {
 			defer close(secondReqRoundTripDoneCh)
@@ -702,9 +662,6 @@ func TestPriorityAndFairnessWithPanicRecoveryAndTimeoutFilter(t *testing.T) {
 			// we must wait for the "first" request to start executing first
 			<-firstReqInProgressCh
 			resp2, secondReqErr = requestGetter(secondRequestEnqueuedPath)
-			if isClientTimeout(secondReqErr) {
-				t.Fatalf("the client has unexpectedly timed out - request: %q error: %s", secondRequestEnqueuedPath, secondReqErr.Error())
-			}
 		}()
 
 		<-firstReqRoundTripDoneCh
@@ -779,14 +736,13 @@ func startAPFController(t *testing.T, stopCh <-chan struct{}, apfConfiguration [
 }
 
 // returns a started http2 server, with a client function to send request to the server.
-func newHTTP2ServerWithClient(handler http.Handler, clientTimeout time.Duration) (*httptest.Server, func(path string) (*http.Response, error)) {
+func newHTTP2ServerWithClient(handler http.Handler) (*httptest.Server, func(path string) (*http.Response, error)) {
 	server := httptest.NewUnstartedServer(handler)
 	server.EnableHTTP2 = true
 	server.StartTLS()
-	cli := server.Client()
-	cli.Timeout = clientTimeout
+
 	return server, func(path string) (*http.Response, error) {
-		return cli.Get(server.URL + path)
+		return server.Client().Get(server.URL + path)
 	}
 }
 
@@ -992,21 +948,4 @@ func gaugeValueMatch(name string, labelFilter map[string]string, wantValue int) 
 	}
 
 	return nil
-}
-
-func isClientTimeout(err error) bool {
-	if urlErr, ok := err.(*url.Error); ok {
-		return urlErr.Timeout()
-	}
-	return false
-}
-
-func hardStop(t *testing.T, stopCh <-chan struct{}, testTimeout time.Duration, cleanup func()) {
-	select {
-	case <-stopCh:
-		// The test has completed normally.
-	case <-time.After(testTimeout):
-		cleanup()
-		t.Fatalf("the test did not finish within %s", testTimeout)
-	}
 }

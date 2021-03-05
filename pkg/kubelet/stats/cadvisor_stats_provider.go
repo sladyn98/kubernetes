@@ -144,11 +144,11 @@ func (p *cadvisorStatsProvider) ListPodStats() ([]statsapi.PodStats, error) {
 
 		logStats, err := p.hostStatsProvider.getPodLogStats(podStats.PodRef.Namespace, podStats.PodRef.Name, podUID, &rootFsInfo)
 		if err != nil {
-			klog.ErrorS(err, "Unable to fetch pod log stats", "pod", klog.KRef(podStats.PodRef.Namespace, podStats.PodRef.Name))
+			klog.Errorf("Unable to fetch pod log stats: %v", err)
 		}
 		etcHostsStats, err := p.hostStatsProvider.getPodEtcHostsStats(podUID, &rootFsInfo)
 		if err != nil {
-			klog.ErrorS(err, "Unable to fetch pod etc hosts stats", "pod", klog.KRef(podStats.PodRef.Namespace, podStats.PodRef.Name))
+			klog.Errorf("unable to fetch pod etc hosts stats: %v", err)
 		}
 
 		podStats.EphemeralStorage = calcEphemeralStorage(podStats.Containers, ephemeralStats, &rootFsInfo, logStats, etcHostsStats, false)
@@ -294,9 +294,9 @@ func isPodManagedContainer(cinfo *cadvisorapiv2.ContainerInfo) bool {
 	podNamespace := kubetypes.GetPodNamespace(cinfo.Spec.Labels)
 	managed := podName != "" && podNamespace != ""
 	if !managed && podName != podNamespace {
-		klog.InfoS(
-			"Expect container to have either both podName and podNamespace labels, or neither",
-			"podNameLabel", podName, "podNamespaceLabel", podNamespace)
+		klog.Warningf(
+			"Expect container to have either both podName (%s) and podNamespace (%s) labels, or neither.",
+			podName, podNamespace)
 	}
 	return managed
 }
@@ -412,7 +412,7 @@ func getCadvisorContainerInfo(ca cadvisor.Interface) (map[string]cadvisorapiv2.C
 		if _, ok := infos["/"]; ok {
 			// If the failure is partial, log it and return a best-effort
 			// response.
-			klog.ErrorS(err, "Partial failure issuing cadvisor.ContainerInfoV2")
+			klog.Errorf("Partial failure issuing cadvisor.ContainerInfoV2: %v", err)
 		} else {
 			return nil, fmt.Errorf("failed to get root cgroup stats: %v", err)
 		}

@@ -409,14 +409,15 @@ func (pp *PostFilterPlugin) PostFilter(ctx context.Context, state *framework.Cyc
 		return nil, framework.NewStatus(framework.Error, err.Error())
 	}
 
+	ph := pp.fh.PreemptHandle()
 	for _, nodeInfo := range nodeInfos {
-		pp.fh.RunFilterPlugins(ctx, state, pod, nodeInfo)
+		ph.RunFilterPlugins(ctx, state, pod, nodeInfo)
 	}
 	var nodes []*v1.Node
 	for _, nodeInfo := range nodeInfos {
 		nodes = append(nodes, nodeInfo.Node())
 	}
-	pp.fh.RunScorePlugins(ctx, state, pod, nodes)
+	ph.RunScorePlugins(ctx, state, pod, nodes)
 
 	if pp.failPostFilter {
 		return nil, framework.NewStatus(framework.Error, fmt.Sprintf("injecting failure for pod %v", pod.Name))

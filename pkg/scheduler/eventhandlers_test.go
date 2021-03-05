@@ -17,7 +17,6 @@ limitations under the License.
 package scheduler
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -418,10 +417,10 @@ func TestUpdatePodInCache(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			schedulerCache := cache.New(ttl, ctx.Done())
-			schedulerQueue := queue.NewTestQueue(ctx, nil)
+			stopCh := make(chan struct{})
+			defer close(stopCh)
+			schedulerCache := cache.New(ttl, stopCh)
+			schedulerQueue := queue.NewPriorityQueue(nil)
 			sched := &Scheduler{
 				SchedulerCache:  schedulerCache,
 				SchedulingQueue: schedulerQueue,

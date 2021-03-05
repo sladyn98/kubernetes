@@ -28,7 +28,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/kubernetes/test/e2e/network/common"
 	testutils "k8s.io/kubernetes/test/utils"
 
 	"github.com/onsi/ginkgo"
@@ -41,7 +40,7 @@ const (
 	checkServicePercent          = 0.05
 )
 
-var _ = common.SIGDescribe("[Feature:PerformanceDNS][Serial]", func() {
+var _ = SIGDescribe("[Feature:PerformanceDNS][Serial]", func() {
 	f := framework.NewDefaultFramework("performancedns")
 
 	ginkgo.BeforeEach(func() {

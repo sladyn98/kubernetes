@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	clientset "k8s.io/client-go/kubernetes"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
@@ -239,7 +240,7 @@ func printStatusAndLogsForNotReadyPods(c clientset.Interface, ns string, podName
 func rebootNode(c clientset.Interface, provider, name, rebootCmd string) bool {
 	// Setup
 	ns := metav1.NamespaceSystem
-	ps, err := testutils.NewPodStore(c, ns, labels.Everything(), fields.OneTermEqualSelector("spec.nodeName", name))
+	ps, err := testutils.NewPodStore(c, ns, labels.Everything(), fields.OneTermEqualSelector(api.PodHostField, name))
 	if err != nil {
 		framework.Logf("Couldn't initialize pod store: %v", err)
 		return false

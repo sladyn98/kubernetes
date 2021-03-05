@@ -17,8 +17,7 @@ limitations under the License.
 package cache
 
 import (
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -115,6 +114,6 @@ type Cache interface {
 
 // Dump is a dump of the cache state.
 type Dump struct {
-	AssumedPods sets.String
+	AssumedPods map[string]bool
 	Nodes       map[string]*framework.NodeInfo
 }

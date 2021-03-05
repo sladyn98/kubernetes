@@ -356,7 +356,6 @@ func rmSetup(t *testing.T) (*httptest.Server, framework.CloseFunc, *disruption.D
 		client,
 		mapper,
 		scaleClient,
-		client.Discovery(),
 	)
 	return s, closeFn, rm, informers, clientSet
 }

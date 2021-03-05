@@ -66,7 +66,6 @@ import (
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/v1/validation"
 	"k8s.io/kubernetes/pkg/features"
-	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/cri/streaming"
@@ -84,10 +83,9 @@ const (
 	cadvisorMetricsPath = "/metrics/cadvisor"
 	resourceMetricsPath = "/metrics/resource"
 	proberMetricsPath   = "/metrics/probes"
+	specPath            = "/spec/"
 	statsPath           = "/stats/"
 	logsPath            = "/logs/"
-	pprofBasePath       = "/debug/pprof/"
-	debugFlagPath       = "/debug/flags/v"
 )
 
 // Server is a http.Handler which exposes kubelet functionality over HTTP.
@@ -139,14 +137,16 @@ func (a *filteringContainer) RegisteredHandlePaths() []string {
 func ListenAndServeKubeletServer(
 	host HostInterface,
 	resourceAnalyzer stats.ResourceAnalyzer,
-	kubeCfg *kubeletconfiginternal.KubeletConfiguration,
+	address net.IP,
+	port uint,
 	tlsOptions *TLSOptions,
-	auth AuthInterface) {
-
-	address := net.ParseIP(kubeCfg.Address)
-	port := uint(kubeCfg.Port)
+	auth AuthInterface,
+	enableCAdvisorJSONEndpoints,
+	enableDebuggingHandlers,
+	enableContentionProfiling,
+	enableSystemLogHandler bool) {
 	klog.InfoS("Starting to listen", "address", address, "port", port)
-	handler := NewServer(host, resourceAnalyzer, auth, kubeCfg)
+	handler := NewServer(host, resourceAnalyzer, auth, enableCAdvisorJSONEndpoints, enableDebuggingHandlers, enableContentionProfiling, enableSystemLogHandler)
 	s := &http.Server{
 		Addr:           net.JoinHostPort(address.String(), strconv.FormatUint(uint64(port), 10)),
 		Handler:        &handler,
@@ -166,9 +166,9 @@ func ListenAndServeKubeletServer(
 }
 
 // ListenAndServeKubeletReadOnlyServer initializes a server to respond to HTTP network requests on the Kubelet.
-func ListenAndServeKubeletReadOnlyServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, address net.IP, port uint) {
+func ListenAndServeKubeletReadOnlyServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, address net.IP, port uint, enableCAdvisorJSONEndpoints bool) {
 	klog.InfoS("Starting to listen read-only", "address", address, "port", port)
-	s := NewServer(host, resourceAnalyzer, nil, nil)
+	s := NewServer(host, resourceAnalyzer, nil, enableCAdvisorJSONEndpoints, false, false, false)
 
 	server := &http.Server{
 		Addr:           net.JoinHostPort(address.String(), strconv.FormatUint(uint64(port), 10)),
@@ -220,7 +220,10 @@ func NewServer(
 	host HostInterface,
 	resourceAnalyzer stats.ResourceAnalyzer,
 	auth AuthInterface,
-	kubeCfg *kubeletconfiginternal.KubeletConfiguration) Server {
+	enableCAdvisorJSONEndpoints,
+	enableDebuggingHandlers,
+	enableContentionProfiling,
+	enableSystemLogHandler bool) Server {
 	server := Server{
 		host:                 host,
 		resourceAnalyzer:     resourceAnalyzer,
@@ -232,14 +235,15 @@ func NewServer(
 	if auth != nil {
 		server.InstallAuthFilter()
 	}
-	server.InstallDefaultHandlers()
-	if kubeCfg != nil && kubeCfg.EnableDebuggingHandlers {
+	server.InstallDefaultHandlers(enableCAdvisorJSONEndpoints)
+	if enableDebuggingHandlers {
 		server.InstallDebuggingHandlers()
-		// To maintain backward compatibility serve logs and pprof only when enableDebuggingHandlers is also enabled
+		// To maintain backward compatibility serve logs only when enableDebuggingHandlers is also enabled
 		// see https://github.com/kubernetes/kubernetes/pull/87273
-		server.InstallSystemLogHandler(kubeCfg.EnableSystemLogHandler)
-		server.InstallProfilingHandler(kubeCfg.EnableProfilingHandler, kubeCfg.EnableContentionProfiling)
-		server.InstallDebugFlagsHandler(kubeCfg.EnableDebugFlagsHandler)
+		server.InstallSystemLogHandler(enableSystemLogHandler)
+		if enableContentionProfiling {
+			goruntime.SetBlockProfileRate(1)
+		}
 	} else {
 		server.InstallDebuggingDisabledHandlers()
 	}
@@ -309,7 +313,7 @@ func (s *Server) getMetricMethodBucket(method string) string {
 
 // InstallDefaultHandlers registers the default set of supported HTTP request
 // patterns with the restful Container.
-func (s *Server) InstallDefaultHandlers() {
+func (s *Server) InstallDefaultHandlers(enableCAdvisorJSONEndpoints bool) {
 	s.addMetricsBucketMatcher("healthz")
 	healthz.InstallHandler(s.restfulCont,
 		healthz.PingHealthz,
@@ -328,7 +332,7 @@ func (s *Server) InstallDefaultHandlers() {
 	s.restfulCont.Add(ws)
 
 	s.addMetricsBucketMatcher("stats")
-	s.restfulCont.Add(stats.CreateHandlers(statsPath, s.host, s.resourceAnalyzer))
+	s.restfulCont.Add(stats.CreateHandlers(statsPath, s.host, s.resourceAnalyzer, enableCAdvisorJSONEndpoints))
 
 	s.addMetricsBucketMatcher("metrics")
 	s.addMetricsBucketMatcher("metrics/cadvisor")
@@ -384,7 +388,22 @@ func (s *Server) InstallDefaultHandlers() {
 	s.restfulCont.Handle(proberMetricsPath,
 		compbasemetrics.HandlerFor(p, compbasemetrics.HandlerOpts{ErrorHandling: compbasemetrics.ContinueOnError}),
 	)
+
+	s.addMetricsBucketMatcher("spec")
+	if enableCAdvisorJSONEndpoints {
+		ws := new(restful.WebService)
+		ws.
+			Path(specPath).
+			Produces(restful.MIME_JSON)
+		ws.Route(ws.GET("").
+			To(s.getSpec).
+			Operation("getSpec").
+			Writes(cadvisorapi.MachineInfo{}))
+		s.restfulCont.Add(ws)
+	}
 }
+
+const pprofBasePath = "/debug/pprof/"
 
 // InstallDebuggingHandlers registers the HTTP request patterns that serve logs or run commands/containers
 func (s *Server) InstallDebuggingHandlers() {
@@ -468,6 +487,33 @@ func (s *Server) InstallDebuggingHandlers() {
 	s.addMetricsBucketMatcher("configz")
 	configz.InstallHandler(s.restfulCont)
 
+	s.addMetricsBucketMatcher("debug")
+	handlePprofEndpoint := func(req *restful.Request, resp *restful.Response) {
+		name := strings.TrimPrefix(req.Request.URL.Path, pprofBasePath)
+		switch name {
+		case "profile":
+			pprof.Profile(resp, req.Request)
+		case "symbol":
+			pprof.Symbol(resp, req.Request)
+		case "cmdline":
+			pprof.Cmdline(resp, req.Request)
+		case "trace":
+			pprof.Trace(resp, req.Request)
+		default:
+			pprof.Index(resp, req.Request)
+		}
+	}
+	// Setup pprof handlers.
+	ws = new(restful.WebService).Path(pprofBasePath)
+	ws.Route(ws.GET("/{subpath:*}").To(func(req *restful.Request, resp *restful.Response) {
+		handlePprofEndpoint(req, resp)
+	})).Doc("pprof endpoint")
+	s.restfulCont.Add(ws)
+
+	// Setup flags handlers.
+	// so far, only logging related endpoints are considered valid to add for these debug flags.
+	s.restfulCont.Handle("/debug/flags/v", routes.StringFlagPutHandler(logs.GlogSetter))
+
 	// The /runningpods endpoint is used for testing only.
 	s.addMetricsBucketMatcher("runningpods")
 	ws = new(restful.WebService)
@@ -517,59 +563,10 @@ func (s *Server) InstallSystemLogHandler(enableSystemLogHandler bool) {
 			Param(ws.PathParameter("logpath", "path to the log").DataType("string")))
 		s.restfulCont.Add(ws)
 	} else {
-		s.restfulCont.Handle(logsPath, getHandlerForDisabledEndpoint("logs endpoint is disabled."))
-	}
-}
-
-func getHandlerForDisabledEndpoint(errorMessage string) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, errorMessage, http.StatusMethodNotAllowed)
-	})
-}
-
-// InstallDebugFlagsHandler registers the HTTP request patterns for /debug/flags/v endpoint.
-func (s *Server) InstallDebugFlagsHandler(enableDebugFlagsHandler bool) {
-	if enableDebugFlagsHandler {
-		// Setup flags handlers.
-		// so far, only logging related endpoints are considered valid to add for these debug flags.
-		s.restfulCont.Handle(debugFlagPath, routes.StringFlagPutHandler(logs.GlogSetter))
-	} else {
-		s.restfulCont.Handle(debugFlagPath, getHandlerForDisabledEndpoint("flags endpoint is disabled."))
-		return
-	}
-}
-
-// InstallProfilingHandler registers the HTTP request patterns for /debug/pprof endpoint.
-func (s *Server) InstallProfilingHandler(enableProfilingLogHandler bool, enableContentionProfiling bool) {
-	s.addMetricsBucketMatcher("debug")
-	if !enableProfilingLogHandler {
-		s.restfulCont.Handle(pprofBasePath, getHandlerForDisabledEndpoint("profiling endpoint is disabled."))
-		return
-	}
-
-	handlePprofEndpoint := func(req *restful.Request, resp *restful.Response) {
-		name := strings.TrimPrefix(req.Request.URL.Path, pprofBasePath)
-		switch name {
-		case "profile":
-			pprof.Profile(resp, req.Request)
-		case "symbol":
-			pprof.Symbol(resp, req.Request)
-		case "cmdline":
-			pprof.Cmdline(resp, req.Request)
-		case "trace":
-			pprof.Trace(resp, req.Request)
-		default:
-			pprof.Index(resp, req.Request)
-		}
-	}
-
-	// Setup pprof handlers.
-	ws := new(restful.WebService).Path(pprofBasePath)
-	ws.Route(ws.GET("/{subpath:*}").To(handlePprofEndpoint)).Doc("pprof endpoint")
-	s.restfulCont.Add(ws)
-
-	if enableContentionProfiling {
-		goruntime.SetBlockProfileRate(1)
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "logs endpoint is disabled.", http.StatusMethodNotAllowed)
+		})
+		s.restfulCont.Handle(logsPath, h)
 	}
 }
 
@@ -700,6 +697,16 @@ func (s *Server) getRunningPods(request *restful.Request, response *restful.Resp
 // getLogs handles logs requests against the Kubelet.
 func (s *Server) getLogs(request *restful.Request, response *restful.Response) {
 	s.host.ServeLogs(response, request.Request)
+}
+
+// getSpec handles spec requests against the Kubelet.
+func (s *Server) getSpec(request *restful.Request, response *restful.Response) {
+	info, err := s.host.GetCachedMachineInfo()
+	if err != nil {
+		response.WriteError(http.StatusInternalServerError, err)
+		return
+	}
+	response.WriteEntity(info)
 }
 
 type execRequestParams struct {

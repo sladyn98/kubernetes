@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 
 	"k8s.io/klog/v2"
 )
@@ -46,17 +45,17 @@ type TimedWorker struct {
 	WorkItem  *WorkArgs
 	CreatedAt time.Time
 	FireAt    time.Time
-	Timer     clock.Timer
+	Timer     *time.Timer
 }
 
-// createWorker creates a TimedWorker that will execute `f` not earlier than `fireAt`.
-func createWorker(args *WorkArgs, createdAt time.Time, fireAt time.Time, f func(args *WorkArgs) error, clock clock.Clock) *TimedWorker {
+// CreateWorker creates a TimedWorker that will execute `f` not earlier than `fireAt`.
+func CreateWorker(args *WorkArgs, createdAt time.Time, fireAt time.Time, f func(args *WorkArgs) error) *TimedWorker {
 	delay := fireAt.Sub(createdAt)
 	if delay <= 0 {
 		go f(args)
 		return nil
 	}
-	timer := clock.AfterFunc(delay, func() { f(args) })
+	timer := time.AfterFunc(delay, func() { f(args) })
 	return &TimedWorker{
 		WorkItem:  args,
 		CreatedAt: createdAt,
@@ -78,7 +77,6 @@ type TimedWorkerQueue struct {
 	// map of workers keyed by string returned by 'KeyFromWorkArgs' from the given worker.
 	workers  map[string]*TimedWorker
 	workFunc func(args *WorkArgs) error
-	clock    clock.Clock
 }
 
 // CreateWorkerQueue creates a new TimedWorkerQueue for workers that will execute
@@ -87,7 +85,6 @@ func CreateWorkerQueue(f func(args *WorkArgs) error) *TimedWorkerQueue {
 	return &TimedWorkerQueue{
 		workers:  make(map[string]*TimedWorker),
 		workFunc: f,
-		clock:    clock.RealClock{},
 	}
 }
 
@@ -118,7 +115,7 @@ func (q *TimedWorkerQueue) AddWork(args *WorkArgs, createdAt time.Time, fireAt t
 		klog.Warningf("Trying to add already existing work for %+v. Skipping.", args)
 		return
 	}
-	worker := createWorker(args, createdAt, fireAt, q.getWrappedWorkerFunc(key), q.clock)
+	worker := CreateWorker(args, createdAt, fireAt, q.getWrappedWorkerFunc(key))
 	q.workers[key] = worker
 }
 

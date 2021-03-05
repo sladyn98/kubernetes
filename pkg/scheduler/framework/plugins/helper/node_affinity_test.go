@@ -17,10 +17,10 @@ limitations under the License.
 package helper
 
 import (
-	"testing"
-
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	"testing"
 )
 
 func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
@@ -513,7 +513,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},
@@ -539,7 +539,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},
@@ -565,7 +565,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},
@@ -601,7 +601,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},
@@ -635,7 +635,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},
@@ -669,7 +669,7 @@ func TestPodMatchesNodeSelectorAndAffinityTerms(t *testing.T) {
 									{
 										MatchFields: []v1.NodeSelectorRequirement{
 											{
-												Key:      metav1.ObjectNameField,
+												Key:      api.ObjectNameField,
 												Operator: v1.NodeSelectorOpIn,
 												Values:   []string{"node_1"},
 											},

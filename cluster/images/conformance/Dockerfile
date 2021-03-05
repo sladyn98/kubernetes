@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG BASEIMAGE
-
-FROM ${BASEIMAGE}
+FROM BASEIMAGE
 
 COPY ginkgo /usr/local/bin/
 COPY e2e.test /usr/local/bin/

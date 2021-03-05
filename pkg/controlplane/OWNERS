@@ -5,6 +5,7 @@ approvers:
 - derekwaynecarr
 - lavalamp
 - mikedanese
+- nikhiljindal
 - sttts
 - wojtek-t
 reviewers:
@@ -18,6 +19,8 @@ reviewers:
 - caesarxuchao
 - mikedanese
 - liggitt
+- nikhiljindal
+- gmarek
 - erictune
 - davidopp
 - pmorie
@@ -32,10 +35,8 @@ reviewers:
 - timothysc
 - soltysh
 - piosz
+- madhusudancs
 - hongchaodeng
 - enj
 labels:
 - sig/api-machinery
-
-emeritus_approvers:
-- nikhiljindal

@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
+	utilproxy "k8s.io/kubernetes/pkg/proxy/util"
 	utilpointer "k8s.io/utils/pointer"
 	"net"
 	"strings"
@@ -118,6 +119,7 @@ func NewFakeProxier(syncPeriod time.Duration, minSyncPeriod time.Duration, clust
 		networkType: networkType,
 	}
 	proxier := &Proxier{
+		portsMap:            make(map[utilproxy.LocalPort]utilproxy.Closeable),
 		serviceMap:          make(proxy.ServiceMap),
 		endpointsMap:        make(proxy.EndpointsMap),
 		clusterCIDR:         clusterCIDR,

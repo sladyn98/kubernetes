@@ -55,11 +55,6 @@ type Resource struct {
 
 var balancePodLabel = map[string]string{"podname": "priority-balanced-memory"}
 
-// track min memory limit based on crio minimum. pods cannot set a limit lower than this
-// see: https://github.com/cri-o/cri-o/blob/29805b13e9a43d9d22628553db337ce1c1bec0a8/internal/config/cgmgr/cgmgr.go#L23
-// see: https://bugzilla.redhat.com/show_bug.cgi?id=1595256
-var crioMinMemLimit = 12 * 1024 * 1024
-
 var podRequestedResource = &v1.ResourceRequirements{
 	Limits: v1.ResourceList{
 		v1.ResourceMemory: resource.MustParse("100Mi"),
@@ -126,19 +121,6 @@ func removeAvoidPodsOffNode(c clientset.Interface, nodeName string) {
 	framework.ExpectNoError(err)
 }
 
-// nodesAreTooUtilized ensures that each node can support 2*crioMinMemLimit
-// We check for double because it needs to support at least the cri-o minimum
-// plus whatever delta between node usages (which could be up to or at least crioMinMemLimit)
-func nodesAreTooUtilized(cs clientset.Interface, nodeList *v1.NodeList) bool {
-	for _, node := range nodeList.Items {
-		_, memFraction, _, memAllocatable := computeCPUMemFraction(cs, node, podRequestedResource)
-		if float64(memAllocatable)-(memFraction*float64(memAllocatable)) < float64(2*crioMinMemLimit) {
-			return true
-		}
-	}
-	return false
-}
-
 // This test suite is used to verifies scheduler priority functions based on the default provider
 var _ = SIGDescribe("SchedulerPriorities [Serial]", func() {
 	var cs clientset.Interface
@@ -167,12 +149,6 @@ var _ = SIGDescribe("SchedulerPriorities [Serial]", func() {
 		framework.ExpectNoError(err)
 		err = e2epod.WaitForPodsRunningReady(cs, metav1.NamespaceSystem, int32(systemPodsNo), 0, framework.PodReadyBeforeTimeout, map[string]string{})
 		framework.ExpectNoError(err)
-
-		// skip if the most utilized node has less than the cri-o minMemLimit available
-		// otherwise we will not be able to run the test pod once all nodes are balanced
-		if nodesAreTooUtilized(cs, nodeList) {
-			ginkgo.Skip("nodes are too utilized to schedule test pods")
-		}
 	})
 
 	ginkgo.It("Pod should be scheduled to node that don't match the PodAntiAffinity terms", func() {
@@ -507,9 +483,8 @@ func createBalancedPodForNodes(f *framework.Framework, cs clientset.Interface, n
 	var maxCPUFraction, maxMemFraction float64 = ratio, ratio
 	var cpuFractionMap = make(map[string]float64)
 	var memFractionMap = make(map[string]float64)
-
 	for _, node := range nodes {
-		cpuFraction, memFraction, _, _ := computeCPUMemFraction(cs, node, requestedResource)
+		cpuFraction, memFraction := computeCPUMemFraction(cs, node, requestedResource)
 		cpuFractionMap[node.Name] = cpuFraction
 		memFractionMap[node.Name] = memFraction
 		if cpuFraction > maxCPUFraction {
@@ -519,7 +494,6 @@ func createBalancedPodForNodes(f *framework.Framework, cs clientset.Interface, n
 			maxMemFraction = memFraction
 		}
 	}
-
 	// we need the max one to keep the same cpu/mem use rate
 	ratio = math.Max(maxCPUFraction, maxMemFraction)
 	for _, node := range nodes {
@@ -536,8 +510,7 @@ func createBalancedPodForNodes(f *framework.Framework, cs clientset.Interface, n
 		memFraction := memFractionMap[node.Name]
 		needCreateResource[v1.ResourceCPU] = *resource.NewMilliQuantity(int64((ratio-cpuFraction)*float64(cpuAllocatableMil)), resource.DecimalSI)
 
-		// add crioMinMemLimit to ensure that all pods are setting at least that much for a limit, while keeping the same ratios
-		needCreateResource[v1.ResourceMemory] = *resource.NewQuantity(int64((ratio-memFraction)*float64(memAllocatableVal)+float64(crioMinMemLimit)), resource.BinarySI)
+		needCreateResource[v1.ResourceMemory] = *resource.NewQuantity(int64((ratio-memFraction)*float64(memAllocatableVal)), resource.BinarySI)
 
 		podConfig := &pausePodConfig{
 			Name:   "",
@@ -577,7 +550,7 @@ func createBalancedPodForNodes(f *framework.Framework, cs clientset.Interface, n
 	return cleanUp, nil
 }
 
-func computeCPUMemFraction(cs clientset.Interface, node v1.Node, resource *v1.ResourceRequirements) (float64, float64, int64, int64) {
+func computeCPUMemFraction(cs clientset.Interface, node v1.Node, resource *v1.ResourceRequirements) (float64, float64) {
 	framework.Logf("ComputeCPUMemFraction for node: %v", node.Name)
 	totalRequestedCPUResource := resource.Requests.Cpu().MilliValue()
 	totalRequestedMemResource := resource.Requests.Memory().Value()
@@ -616,7 +589,7 @@ func computeCPUMemFraction(cs clientset.Interface, node v1.Node, resource *v1.Re
 	framework.Logf("Node: %v, totalRequestedCPUResource: %v, cpuAllocatableMil: %v, cpuFraction: %v", node.Name, totalRequestedCPUResource, cpuAllocatableMil, cpuFraction)
 	framework.Logf("Node: %v, totalRequestedMemResource: %v, memAllocatableVal: %v, memFraction: %v", node.Name, totalRequestedMemResource, memAllocatableVal, memFraction)
 
-	return cpuFraction, memFraction, cpuAllocatableMil, memAllocatableVal
+	return cpuFraction, memFraction
 }
 
 func getNonZeroRequests(pod *v1.Pod) Resource {
@@ -664,7 +637,7 @@ func createRC(ns, rsName string, replicas int32, rcPodLabels map[string]string, 
 
 func getRandomTaint() v1.Taint {
 	return v1.Taint{
-		Key:    fmt.Sprintf("kubernetes.io/e2e-scheduling-priorities-%s", string(uuid.NewUUID()[:23])),
+		Key:    fmt.Sprintf("kubernetes.io/scheduling-priorities-e2e-taint-key-%s", string(uuid.NewUUID())),
 		Value:  fmt.Sprintf("testing-taint-value-%s", string(uuid.NewUUID())),
 		Effect: v1.TaintEffectPreferNoSchedule,
 	}

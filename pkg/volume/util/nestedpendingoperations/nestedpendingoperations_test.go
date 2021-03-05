@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/goroutinemap/exponentialbackoff"
@@ -824,38 +824,36 @@ func testConcurrentOperationsNegative(
 
 /* END concurrent operations tests */
 
-func generateCallbackFunc(done chan<- interface{}) func() volumetypes.OperationContext {
-	return func() volumetypes.OperationContext {
+func generateCallbackFunc(done chan<- interface{}) func() (error, error) {
+	return func() (error, error) {
 		done <- true
-		return volumetypes.NewOperationContext(nil, nil, false)
+		return nil, nil
 	}
 }
 
-func generateWaitFunc(done <-chan interface{}) func() volumetypes.OperationContext {
-	return func() volumetypes.OperationContext {
+func generateWaitFunc(done <-chan interface{}) func() (error, error) {
+	return func() (error, error) {
 		<-done
-		return volumetypes.NewOperationContext(nil, nil, false)
+		return nil, nil
 	}
 }
 
-func panicFunc() volumetypes.OperationContext {
+func panicFunc() (error, error) {
 	panic("testing panic")
 }
 
-func errorFunc() volumetypes.OperationContext {
-	return volumetypes.NewOperationContext(fmt.Errorf("placeholder1"), fmt.Errorf("placeholder2"), false)
+func errorFunc() (error, error) {
+	return fmt.Errorf("placeholder1"), fmt.Errorf("placeholder2")
 }
 
-func generateWaitWithErrorFunc(done <-chan interface{}) func() volumetypes.OperationContext {
-	return func() volumetypes.OperationContext {
+func generateWaitWithErrorFunc(done <-chan interface{}) func() (error, error) {
+	return func() (error, error) {
 		<-done
-		return volumetypes.NewOperationContext(fmt.Errorf("placeholder1"), fmt.Errorf("placeholder2"), false)
+		return fmt.Errorf("placeholder1"), fmt.Errorf("placeholder2")
 	}
 }
 
-func noopFunc() volumetypes.OperationContext {
-	return volumetypes.NewOperationContext(nil, nil, false)
-}
+func noopFunc() (error, error) { return nil, nil }
 
 func retryWithExponentialBackOff(initialDuration time.Duration, fn wait.ConditionFunc) error {
 	backoff := wait.Backoff{

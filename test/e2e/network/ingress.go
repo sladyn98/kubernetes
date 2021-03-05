@@ -47,7 +47,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/providers/gce"
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
-	"k8s.io/kubernetes/test/e2e/network/common"
 
 	"github.com/onsi/ginkgo"
 )
@@ -57,7 +56,7 @@ const (
 	instanceGroupAnnotation = "ingress.gcp.kubernetes.io/instance-groups"
 )
 
-var _ = common.SIGDescribe("Loadbalancing: L7", func() {
+var _ = SIGDescribe("Loadbalancing: L7", func() {
 	defer ginkgo.GinkgoRecover()
 	var (
 		ns               string
@@ -205,7 +204,7 @@ var _ = common.SIGDescribe("Loadbalancing: L7", func() {
 		// zone based on pod labels.
 	})
 
-	ginkgo.Describe("GCE [Slow] [Feature:NEG] [Flaky]", func() {
+	ginkgo.Describe("GCE [Slow] [Feature:NEG]", func() {
 		var gceController *gce.IngressController
 
 		// Platform specific setup
@@ -903,7 +902,7 @@ func detectNegAnnotation(f *framework.Framework, jig *e2eingress.TestJig, gceCon
 	}
 }
 
-var _ = common.SIGDescribe("Ingress API", func() {
+var _ = SIGDescribe("Ingress API", func() {
 	f := framework.NewDefaultFramework("ingress")
 	/*
 		Release: v1.19

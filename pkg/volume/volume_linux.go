@@ -29,7 +29,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
-	"k8s.io/kubernetes/pkg/volume/util/types"
 )
 
 const (
@@ -41,7 +40,7 @@ const (
 // SetVolumeOwnership modifies the given volume to be owned by
 // fsGroup, and sets SetGid so that newly created files are owned by
 // fsGroup. If fsGroup is nil nothing is done.
-func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy, completeFunc func(types.CompleteFuncParam)) error {
+func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy, completeFunc func(*error)) error {
 	if fsGroup == nil {
 		return nil
 	}
@@ -58,9 +57,7 @@ func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1
 	if !fsGroupPolicyEnabled {
 		err := legacyOwnershipChange(mounter, fsGroup)
 		if completeFunc != nil {
-			completeFunc(types.CompleteFuncParam{
-				Err: &err,
-			})
+			completeFunc(&err)
 		}
 		return err
 	}
@@ -77,9 +74,7 @@ func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1
 		return changeFilePermission(path, fsGroup, mounter.GetAttributes().ReadOnly, info)
 	})
 	if completeFunc != nil {
-		completeFunc(types.CompleteFuncParam{
-			Err: &err,
-		})
+		completeFunc(&err)
 	}
 	return err
 }

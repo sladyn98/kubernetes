@@ -23,11 +23,13 @@ import (
 	"strings"
 	"sync"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/features"
 	utilproxy "k8s.io/kubernetes/pkg/proxy/util"
 	utilnet "k8s.io/utils/net"
 )
@@ -134,7 +136,9 @@ func newEndpointSliceInfo(endpointSlice *discovery.EndpointSlice, remove bool) *
 				Terminating: endpoint.Conditions.Terminating != nil && *endpoint.Conditions.Terminating,
 			}
 
-			epInfo.NodeName = endpoint.NodeName
+			if utilfeature.DefaultFeatureGate.Enabled(features.EndpointSliceNodeName) {
+				epInfo.NodeName = endpoint.NodeName
+			}
 
 			esInfo.Endpoints = append(esInfo.Endpoints, epInfo)
 		}

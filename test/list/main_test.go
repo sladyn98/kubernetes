@@ -43,43 +43,43 @@ var _ = Describe("Feature", func() {
 	It("should work properly", func() {})
 })`, []Test{{"e2e/foo.go:4:2", "[k8s.io] Feature", "should work properly"}},
 	},
-	// SIGDescribe + It
+	// KubeDescribe + It
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	It("should work properly", func() {})
 })`, []Test{{"e2e/foo.go:4:2", "[k8s.io] Feature", "should work properly"}},
 	},
-	// SIGDescribe + Context + It
+	// KubeDescribe + Context + It
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	Context("when offline", func() {
 		It("should work", func() {})
 	})
 })`, []Test{{"e2e/foo.go:5:3", "[k8s.io] Feature when offline", "should work"}},
 	},
-	// SIGDescribe + It(Sprintf)
+	// KubeDescribe + It(Sprintf)
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	It(fmt.Sprintf("handles %d nodes", num), func() {})
 })`, []Test{{"e2e/foo.go:4:2", "[k8s.io] Feature", "handles * nodes"}},
 	},
-	// SIGDescribe + Sprintf + It(var)
+	// KubeDescribe + Sprintf + It(var)
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	arg := fmt.Sprintf("does %s and %v at %d", task, desc, num)
 	It(arg, func() {})
 })`, []Test{{"e2e/foo.go:5:2", "[k8s.io] Feature", "does * and * at *"}},
 	},
-	// SIGDescribe + string + It(var)
+	// KubeDescribe + string + It(var)
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	arg := "does stuff"
 	It(arg, func() {})
 })`, []Test{{"e2e/foo.go:5:2", "[k8s.io] Feature", "does stuff"}},
 	},
-	// SIGDescribe + It(unknown)
+	// KubeDescribe + It(unknown)
 	{"e2e/foo.go", `
-var _ = SIGDescribe("Feature", func() {
+var _ = framework.KubeDescribe("Feature", func() {
 	It(mysteryFunc(), func() {})
 })`, []Test{{"e2e/foo.go:4:2", "[k8s.io] Feature", "*"}},
 	},

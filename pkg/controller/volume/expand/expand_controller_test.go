@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"testing"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -121,9 +121,9 @@ func TestSyncHandler(t *testing.T) {
 		var expController *expandController
 		expController, _ = expc.(*expandController)
 		var expansionCalled bool
-		expController.operationGenerator = operationexecutor.NewFakeOGCounter(func() volumetypes.OperationContext {
+		expController.operationGenerator = operationexecutor.NewFakeOGCounter(func() (error, error) {
 			expansionCalled = true
-			return volumetypes.NewOperationContext(nil, nil, false)
+			return nil, nil
 		})
 
 		if test.pv != nil {

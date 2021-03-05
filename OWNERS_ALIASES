@@ -36,11 +36,13 @@ aliases:
     - dims
     - enj
     - erictune
+    - jianhuiz
     - lavalamp
     - liggitt
     - mikedanese
     - mml
     - ncdc
+    - nikhiljindal
     - smarterclayton
     - sttts
     - thockin
@@ -57,6 +59,7 @@ aliases:
     - dims
     - enj
     - errordeveloper
+    - jianhuiz
     - lavalamp
     - liggitt
     - mikedanese
@@ -94,7 +97,9 @@ aliases:
     - tallclair
   sig-auth-policy-reviewers:
     - deads2k
+    - jianhuiz
     - liggitt
+    - mbohlool
     - tallclair
     - krmayankk
 
@@ -168,10 +173,6 @@ aliases:
     - verult
     - humblec
     - xing-yang
-    - chrishenzie
-    - Jiawei0227
-    - mattcary
-    - saikat-royc
   # emeritus:
   # - davidz627
 
@@ -198,7 +199,6 @@ aliases:
     - liu-cong
     - damemi
     - chendave
-    - adtac
 
   sig-cli-maintainers:
     - brendandburns
@@ -230,8 +230,6 @@ aliases:
     - pwittrock
     - zhouya0
     - eddiezane
-    - dougsland
-    - rikatz
 
   sig-testing-reviewers:
     - bentheelder
@@ -255,7 +253,6 @@ aliases:
     - yujuhong
     - sjenning
     - mrunalp
-    - klueska
   # emeretus:
   # - dashpole
   # - vishh
@@ -338,13 +335,15 @@ aliases:
     - RainbowMango
     - serathius
   sig-instrumentation-reviewers:
-    - brancz
-    - dashpole
-    - ehashman
+    - kawych
     - s-urbaniak
     - DirectXMan12
+    - x13n
+    - loburm
+    - huangyuqi
     - andyxning
     - coffeepac
+    - monotek
     - logicalhan
     - RainbowMango
     - serathius
@@ -428,6 +427,8 @@ aliases:
     - caesarxuchao
     - vishh
     - mikedanese
+    - nikhiljindal
+    - gmarek
     - davidopp
     - pmorie
     - sttts
@@ -456,10 +457,9 @@ aliases:
     - jpbetz
     - sttts
 
-  sig-apps-api-reviewers:
-    - janetkuo
-    - kow3ns
-    - soltysh
+  # sig-apps-api-reviewers:
+  #   -
+  #   -
 
   sig-auth-api-reviewers:
     - enj
@@ -544,13 +544,13 @@ aliases:
     - calebamiles     # Release
     - caseydavenport  # Network
     - countspongebob  # Scalability
+    - csbell          # Multicluster
     - dcbw            # Network
     - dchen1107       # Node
     - deads2k         # API Machinery
     - derekwaynecarr  # Node
     - dims            # Architecture
     - ehashman        # Instrumentation
-    - janetkuo        # Apps
     - jdumars         # Architecture, Release
     - jsafrane        # Storage
     - kow3ns          # Apps
@@ -567,7 +567,7 @@ aliases:
     - justinsb        # Cluster Lifecycle
     - saad-ali        # Storage
     - seans3          # CLI
-    - soltysh         # Apps, CLI
+    - soltysh         # CLI
     - tallclair       # Auth
     - thockin         # Network
     - timothysc       # Cluster Lifecycle, Scheduling

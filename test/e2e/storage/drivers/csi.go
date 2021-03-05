@@ -37,16 +37,13 @@ package drivers
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/onsi/ginkgo"
-	"google.golang.org/grpc/codes"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,21 +51,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
 	e2evolume "k8s.io/kubernetes/test/e2e/framework/volume"
-	mockdriver "k8s.io/kubernetes/test/e2e/storage/drivers/csi-test/driver"
-	mockservice "k8s.io/kubernetes/test/e2e/storage/drivers/csi-test/mock/service"
-	"k8s.io/kubernetes/test/e2e/storage/drivers/proxy"
 	storageframework "k8s.io/kubernetes/test/e2e/storage/framework"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
-
-	"google.golang.org/grpc"
 )
 
 const (
@@ -76,15 +66,13 @@ const (
 	GCEPDCSIDriverName = "pd.csi.storage.gke.io"
 	// GCEPDCSIZoneTopologyKey is the key of GCE Persistent Disk CSI zone topology
 	GCEPDCSIZoneTopologyKey = "topology.gke.io/zone"
-
-	// Prefix of the mock driver grpc log
-	grpcCallPrefix = "gRPCCall:"
 )
 
 // hostpathCSI
 type hostpathCSIDriver struct {
 	driverInfo       storageframework.DriverInfo
 	manifests        []string
+	cleanupHandle    framework.CleanupActionHandle
 	volumeAttributes []map[string]string
 }
 
@@ -189,8 +177,8 @@ func (h *hostpathCSIDriver) GetSnapshotClass(config *storageframework.PerTestCon
 func (h *hostpathCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.PerTestConfig, func()) {
 	// Create secondary namespace which will be used for creating driver
 	driverNamespace := utils.CreateDriverNamespace(f)
-	driverns := driverNamespace.Name
-	testns := f.Namespace.Name
+	ns2 := driverNamespace.Name
+	ns1 := f.Namespace.Name
 
 	ginkgo.By(fmt.Sprintf("deploying %s driver", h.driverInfo.Name))
 	cancelLogging := utils.StartPodLogs(f, driverNamespace)
@@ -224,13 +212,28 @@ func (h *hostpathCSIDriver) PrepareTest(f *framework.Framework) (*storageframewo
 		framework.Failf("deploying %s driver: %v", h.driverInfo.Name, err)
 	}
 
-	cleanupFunc := generateDriverCleanupFunc(
-		f,
-		h.driverInfo.Name,
-		testns,
-		driverns,
-		cleanup,
-		cancelLogging)
+	// Cleanup CSI driver and namespaces. This function needs to be idempotent and can be
+	// concurrently called from defer (or AfterEach) and AfterSuite action hooks.
+	cleanupFunc := func() {
+		ginkgo.By(fmt.Sprintf("deleting the test namespace: %s", ns1))
+		// Delete the primary namespace but its okay to fail here because this namespace will
+		// also be deleted by framework.Aftereach hook
+		tryFunc(func() { f.DeleteNamespace(ns1) })
+
+		ginkgo.By("uninstalling csi mock driver")
+		tryFunc(cleanup)
+		tryFunc(cancelLogging)
+
+		ginkgo.By(fmt.Sprintf("deleting the driver namespace: %s", ns2))
+		tryFunc(func() { f.DeleteNamespace(ns2) })
+		// cleanup function has already ran and hence we don't need to run it again.
+		// We do this as very last action because in-case defer(or AfterEach) races
+		// with AfterSuite and test routine gets killed then this block still
+		// runs in AfterSuite
+		framework.RemoveCleanupAction(h.cleanupHandle)
+
+	}
+	h.cleanupHandle = framework.AddCleanupAction(cleanupFunc)
 
 	return config, cleanupFunc
 }
@@ -245,42 +248,11 @@ type mockCSIDriver struct {
 	attachLimit         int
 	enableTopology      bool
 	enableNodeExpansion bool
-	hooks               Hooks
+	cleanupHandle       framework.CleanupActionHandle
+	javascriptHooks     map[string]string
 	tokenRequests       []storagev1.TokenRequest
 	requiresRepublish   *bool
 	fsGroupPolicy       *storagev1.FSGroupPolicy
-	embedded            bool
-	calls               MockCSICalls
-	embeddedCSIDriver   *mockdriver.CSIDriver
-
-	// Additional values set during PrepareTest
-	clientSet       kubernetes.Interface
-	driverNamespace *v1.Namespace
-}
-
-// Hooks to be run to execute while handling gRPC calls.
-//
-// At the moment, only generic pre- and post-function call
-// hooks are implemented. Those hooks can cast the request and
-// response values if needed. More hooks inside specific
-// functions could be added if needed.
-type Hooks struct {
-	// Pre is called before invoking the mock driver's implementation of a method.
-	// If either a non-nil reply or error are returned, then those are returned to the caller.
-	Pre func(ctx context.Context, method string, request interface{}) (reply interface{}, err error)
-
-	// Post is called after invoking the mock driver's implementation of a method.
-	// What it returns is used as actual result.
-	Post func(ctx context.Context, method string, request, reply interface{}, err error) (finalReply interface{}, finalErr error)
-}
-
-// MockCSITestDriver provides additional functions specific to the CSI mock driver.
-type MockCSITestDriver interface {
-	storageframework.DynamicPVTestDriver
-
-	// GetCalls returns all currently observed gRPC calls. Only valid
-	// after PrepareTest.
-	GetCalls() ([]MockCSICall, error)
 }
 
 // CSIMockDriverOpts defines options used for csi driver
@@ -294,96 +266,10 @@ type CSIMockDriverOpts struct {
 	EnableResizing      bool
 	EnableNodeExpansion bool
 	EnableSnapshot      bool
+	JavascriptHooks     map[string]string
 	TokenRequests       []storagev1.TokenRequest
 	RequiresRepublish   *bool
 	FSGroupPolicy       *storagev1.FSGroupPolicy
-
-	// Embedded defines whether the CSI mock driver runs
-	// inside the cluster (false, the default) or just a proxy
-	// runs inside the cluster and all gRPC calls are handled
-	// inside the e2e.test binary.
-	Embedded bool
-
-	// Hooks that will be called if (and only if!) the embedded
-	// mock driver is used. Beware that hooks are invoked
-	// asynchronously in different goroutines.
-	Hooks Hooks
-}
-
-// Dummy structure that parses just volume_attributes and error code out of logged CSI call
-type MockCSICall struct {
-	json string // full log entry
-
-	Method  string
-	Request struct {
-		VolumeContext map[string]string `json:"volume_context"`
-	}
-	FullError struct {
-		Code    codes.Code `json:"code"`
-		Message string     `json:"message"`
-	}
-	Error string
-}
-
-// MockCSICalls is a Thread-safe storage for MockCSICall instances.
-type MockCSICalls struct {
-	calls []MockCSICall
-	mutex sync.Mutex
-}
-
-// Get returns all currently recorded calls.
-func (c *MockCSICalls) Get() []MockCSICall {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	return c.calls[:]
-}
-
-// Add appens one new call at the end.
-func (c *MockCSICalls) Add(call MockCSICall) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.calls = append(c.calls, call)
-}
-
-// LogGRPC takes individual parameters from the mock CSI driver and adds them.
-func (c *MockCSICalls) LogGRPC(method string, request, reply interface{}, err error) {
-	// Encoding to JSON and decoding mirrors the traditional way of capturing calls.
-	// Probably could be simplified now...
-	logMessage := struct {
-		Method   string
-		Request  interface{}
-		Response interface{}
-		// Error as string, for backward compatibility.
-		// "" on no error.
-		Error string
-		// Full error dump, to be able to parse out full gRPC error code and message separately in a test.
-		FullError error
-	}{
-		Method:    method,
-		Request:   request,
-		Response:  reply,
-		FullError: err,
-	}
-
-	if err != nil {
-		logMessage.Error = err.Error()
-	}
-
-	msg, _ := json.Marshal(logMessage)
-	call := MockCSICall{
-		json: string(msg),
-	}
-	json.Unmarshal(msg, &call)
-
-	klog.Infof("%s %s", grpcCallPrefix, string(msg))
-
-	// Trim gRPC service name, i.e. "/csi.v1.Identity/Probe" -> "Probe"
-	methodParts := strings.Split(call.Method, "/")
-	call.Method = methodParts[len(methodParts)-1]
-
-	c.Add(call)
 }
 
 var _ storageframework.TestDriver = &mockCSIDriver{}
@@ -391,7 +277,7 @@ var _ storageframework.DynamicPVTestDriver = &mockCSIDriver{}
 var _ storageframework.SnapshottableTestDriver = &mockCSIDriver{}
 
 // InitMockCSIDriver returns a mockCSIDriver that implements TestDriver interface
-func InitMockCSIDriver(driverOpts CSIMockDriverOpts) MockCSITestDriver {
+func InitMockCSIDriver(driverOpts CSIMockDriverOpts) storageframework.TestDriver {
 	driverManifests := []string{
 		"test/e2e/testing-manifests/storage-csi/external-attacher/rbac.yaml",
 		"test/e2e/testing-manifests/storage-csi/external-provisioner/rbac.yaml",
@@ -399,11 +285,7 @@ func InitMockCSIDriver(driverOpts CSIMockDriverOpts) MockCSITestDriver {
 		"test/e2e/testing-manifests/storage-csi/external-snapshotter/rbac.yaml",
 		"test/e2e/testing-manifests/storage-csi/mock/csi-mock-rbac.yaml",
 		"test/e2e/testing-manifests/storage-csi/mock/csi-storageclass.yaml",
-	}
-	if driverOpts.Embedded {
-		driverManifests = append(driverManifests, "test/e2e/testing-manifests/storage-csi/mock/csi-mock-proxy.yaml")
-	} else {
-		driverManifests = append(driverManifests, "test/e2e/testing-manifests/storage-csi/mock/csi-mock-driver.yaml")
+		"test/e2e/testing-manifests/storage-csi/mock/csi-mock-driver.yaml",
 	}
 
 	if driverOpts.RegisterDriver {
@@ -444,11 +326,10 @@ func InitMockCSIDriver(driverOpts CSIMockDriverOpts) MockCSITestDriver {
 		attachable:          !driverOpts.DisableAttach,
 		attachLimit:         driverOpts.AttachLimit,
 		enableNodeExpansion: driverOpts.EnableNodeExpansion,
+		javascriptHooks:     driverOpts.JavascriptHooks,
 		tokenRequests:       driverOpts.TokenRequests,
 		requiresRepublish:   driverOpts.RequiresRepublish,
 		fsGroupPolicy:       driverOpts.FSGroupPolicy,
-		embedded:            driverOpts.Embedded,
-		hooks:               driverOpts.Hooks,
 	}
 }
 
@@ -476,108 +357,62 @@ func (m *mockCSIDriver) GetSnapshotClass(config *storageframework.PerTestConfig,
 }
 
 func (m *mockCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.PerTestConfig, func()) {
-	m.clientSet = f.ClientSet
-
 	// Create secondary namespace which will be used for creating driver
-	m.driverNamespace = utils.CreateDriverNamespace(f)
-	driverns := m.driverNamespace.Name
-	testns := f.Namespace.Name
+	driverNamespace := utils.CreateDriverNamespace(f)
+	ns2 := driverNamespace.Name
+	ns1 := f.Namespace.Name
 
-	if m.embedded {
-		ginkgo.By("deploying csi mock proxy")
-	} else {
-		ginkgo.By("deploying csi mock driver")
-	}
-	cancelLogging := utils.StartPodLogs(f, m.driverNamespace)
+	ginkgo.By("deploying csi mock driver")
+	cancelLogging := utils.StartPodLogs(f, driverNamespace)
 	cs := f.ClientSet
 
 	// pods should be scheduled on the node
 	node, err := e2enode.GetRandomReadySchedulableNode(cs)
 	framework.ExpectNoError(err)
-
-	embeddedCleanup := func() {}
-	containerArgs := []string{}
-	if m.embedded {
-		// Run embedded CSI driver.
-		//
-		// For now we start exactly one instance which implements controller,
-		// node and identity services. It matches with the one pod that we run
-		// inside the cluster. The name and namespace of that one is deterministic,
-		// so we know what to connect to.
-		//
-		// Long-term we could also deploy one central controller and multiple
-		// node instances, with knowledge about provisioned volumes shared in
-		// this process.
-		podname := "csi-mockplugin-0"
-		containername := "mock"
-		ctx, cancel := context.WithCancel(context.Background())
-		serviceConfig := mockservice.Config{
-			DisableAttach:         !m.attachable,
-			DriverName:            "csi-mock-" + f.UniqueName,
-			AttachLimit:           int64(m.attachLimit),
-			NodeExpansionRequired: m.enableNodeExpansion,
-			EnableTopology:        m.enableTopology,
-			IO: proxy.PodDirIO{
-				F:             f,
-				Namespace:     m.driverNamespace.Name,
-				PodName:       podname,
-				ContainerName: "busybox",
-			},
-		}
-		s := mockservice.New(serviceConfig)
-		servers := &mockdriver.CSIDriverServers{
-			Controller: s,
-			Identity:   s,
-			Node:       s,
-		}
-		m.embeddedCSIDriver = mockdriver.NewCSIDriver(servers)
-
-		l, err := proxy.Listen(ctx, f.ClientSet, f.ClientConfig(),
-			proxy.Addr{
-				Namespace:     m.driverNamespace.Name,
-				PodName:       podname,
-				ContainerName: containername,
-				Port:          9000,
-			},
-		)
-		framework.ExpectNoError(err, "start connecting to proxy pod")
-		err = m.embeddedCSIDriver.Start(l, m.interceptGRPC)
-		framework.ExpectNoError(err, "start mock driver")
-
-		embeddedCleanup = func() {
-			// Kill all goroutines and delete resources of the mock driver.
-			m.embeddedCSIDriver.Stop()
-			l.Close()
-			cancel()
-		}
-	} else {
-		// When using the mock driver inside the cluster it has to be reconfigured
-		// via command line parameters.
-		containerArgs = append(containerArgs, "--name=csi-mock-"+f.UniqueName)
-
-		if !m.attachable {
-			containerArgs = append(containerArgs, "--disable-attach")
-		}
-
-		if m.enableTopology {
-			containerArgs = append(containerArgs, "--enable-topology")
-		}
-
-		if m.attachLimit > 0 {
-			containerArgs = append(containerArgs, "--attach-limit", strconv.Itoa(m.attachLimit))
-		}
-
-		if m.enableNodeExpansion {
-			containerArgs = append(containerArgs, "--node-expand-required=true")
-		}
-	}
-
 	config := &storageframework.PerTestConfig{
 		Driver:              m,
 		Prefix:              "mock",
 		Framework:           f,
 		ClientNodeSelection: e2epod.NodeSelection{Name: node.Name},
-		DriverNamespace:     m.driverNamespace,
+		DriverNamespace:     driverNamespace,
+	}
+
+	containerArgs := []string{"--name=csi-mock-" + f.UniqueName}
+	if !m.attachable {
+		containerArgs = append(containerArgs, "--disable-attach")
+	}
+
+	if m.enableTopology {
+		containerArgs = append(containerArgs, "--enable-topology")
+	}
+
+	if m.attachLimit > 0 {
+		containerArgs = append(containerArgs, "--attach-limit", strconv.Itoa(m.attachLimit))
+	}
+
+	if m.enableNodeExpansion {
+		containerArgs = append(containerArgs, "--node-expand-required=true")
+	}
+
+	// Create a config map with javascript hooks. Create it even when javascriptHooks
+	// are empty, so we can unconditionally add it to the mock pod.
+	const hooksConfigMapName = "mock-driver-hooks"
+	hooksYaml, err := yaml.Marshal(m.javascriptHooks)
+	framework.ExpectNoError(err)
+	hooks := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: hooksConfigMapName,
+		},
+		Data: map[string]string{
+			"hooks.yaml": string(hooksYaml),
+		},
+	}
+
+	_, err = f.ClientSet.CoreV1().ConfigMaps(ns2).Create(context.TODO(), hooks, metav1.CreateOptions{})
+	framework.ExpectNoError(err)
+
+	if len(m.javascriptHooks) > 0 {
+		containerArgs = append(containerArgs, "--hooks-file=/etc/hooks/hooks.yaml")
 	}
 
 	o := utils.PatchCSIOptions{
@@ -598,7 +433,7 @@ func (m *mockCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.P
 		RequiresRepublish: m.requiresRepublish,
 		FSGroupPolicy:     m.fsGroupPolicy,
 	}
-	cleanup, err := utils.CreateFromManifests(f, m.driverNamespace, func(item interface{}) error {
+	cleanup, err := utils.CreateFromManifests(f, driverNamespace, func(item interface{}) error {
 		return utils.PatchCSIDeployment(f, o, item)
 	}, m.manifests...)
 
@@ -606,92 +441,43 @@ func (m *mockCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.P
 		framework.Failf("deploying csi mock driver: %v", err)
 	}
 
-	driverCleanupFunc := generateDriverCleanupFunc(
-		f,
-		"mock",
-		testns,
-		driverns,
-		cleanup,
-		cancelLogging)
-
+	// Cleanup CSI driver and namespaces. This function needs to be idempotent and can be
+	// concurrently called from defer (or AfterEach) and AfterSuite action hooks.
 	cleanupFunc := func() {
-		embeddedCleanup()
-		driverCleanupFunc()
+		ginkgo.By(fmt.Sprintf("deleting the test namespace: %s", ns1))
+		// Delete the primary namespace but its okay to fail here because this namespace will
+		// also be deleted by framework.Aftereach hook
+		tryFunc(func() { f.DeleteNamespace(ns1) })
+
+		ginkgo.By("uninstalling csi mock driver")
+		tryFunc(func() {
+			err := f.ClientSet.CoreV1().ConfigMaps(ns2).Delete(context.TODO(), hooksConfigMapName, metav1.DeleteOptions{})
+			if err != nil {
+				framework.Logf("deleting failed: %s", err)
+			}
+		})
+
+		tryFunc(cleanup)
+		tryFunc(cancelLogging)
+		ginkgo.By(fmt.Sprintf("deleting the driver namespace: %s", ns2))
+		tryFunc(func() { f.DeleteNamespace(ns2) })
+		// cleanup function has already ran and hence we don't need to run it again.
+		// We do this as very last action because in-case defer(or AfterEach) races
+		// with AfterSuite and test routine gets killed then this block still
+		// runs in AfterSuite
+		framework.RemoveCleanupAction(m.cleanupHandle)
+
 	}
+
+	m.cleanupHandle = framework.AddCleanupAction(cleanupFunc)
 
 	return config, cleanupFunc
 }
 
-func (m *mockCSIDriver) interceptGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	defer func() {
-		// Always log the call and its final result,
-		// regardless whether the result was from the real
-		// implementation or a hook.
-		m.calls.LogGRPC(info.FullMethod, req, resp, err)
-	}()
-
-	if m.hooks.Pre != nil {
-		resp, err = m.hooks.Pre(ctx, info.FullMethod, req)
-		if resp != nil || err != nil {
-			return
-		}
-	}
-	resp, err = handler(ctx, req)
-	if m.hooks.Post != nil {
-		resp, err = m.hooks.Post(ctx, info.FullMethod, req, resp, err)
-	}
-	return
-}
-
-func (m *mockCSIDriver) GetCalls() ([]MockCSICall, error) {
-	if m.embedded {
-		return m.calls.Get(), nil
-	}
-
-	if m.driverNamespace == nil {
-		return nil, errors.New("PrepareTest not called yet")
-	}
-
-	// Name of CSI driver pod name (it's in a StatefulSet with a stable name)
-	driverPodName := "csi-mockplugin-0"
-	// Name of CSI driver container name
-	driverContainerName := "mock"
-
-	// Load logs of driver pod
-	log, err := e2epod.GetPodLogs(m.clientSet, m.driverNamespace.Name, driverPodName, driverContainerName)
-	if err != nil {
-		return nil, fmt.Errorf("could not load CSI driver logs: %s", err)
-	}
-
-	logLines := strings.Split(log, "\n")
-	var calls []MockCSICall
-	for _, line := range logLines {
-		index := strings.Index(line, grpcCallPrefix)
-		if index == -1 {
-			continue
-		}
-		line = line[index+len(grpcCallPrefix):]
-		call := MockCSICall{
-			json: string(line),
-		}
-		err := json.Unmarshal([]byte(line), &call)
-		if err != nil {
-			framework.Logf("Could not parse CSI driver log line %q: %s", line, err)
-			continue
-		}
-
-		// Trim gRPC service name, i.e. "/csi.v1.Identity/Probe" -> "Probe"
-		methodParts := strings.Split(call.Method, "/")
-		call.Method = methodParts[len(methodParts)-1]
-
-		calls = append(calls, call)
-	}
-	return calls, nil
-}
-
 // gce-pd
 type gcePDCSIDriver struct {
-	driverInfo storageframework.DriverInfo
+	driverInfo    storageframework.DriverInfo
+	cleanupHandle framework.CleanupActionHandle
 }
 
 var _ storageframework.TestDriver = &gcePDCSIDriver{}
@@ -784,22 +570,11 @@ func (g *gcePDCSIDriver) GetSnapshotClass(config *storageframework.PerTestConfig
 }
 
 func (g *gcePDCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.PerTestConfig, func()) {
-	testns := f.Namespace.Name
-	cfg := &storageframework.PerTestConfig{
-		Driver:    g,
-		Prefix:    "gcepd",
-		Framework: f,
-	}
-
-	if framework.ProviderIs("gke") {
-		framework.Logf("The csi gce-pd driver is automatically installed in GKE. Skipping driver installation.")
-		return cfg, func() {}
-	}
-
 	ginkgo.By("deploying csi gce-pd driver")
 	// Create secondary namespace which will be used for creating driver
 	driverNamespace := utils.CreateDriverNamespace(f)
-	driverns := driverNamespace.Name
+	ns2 := driverNamespace.Name
+	ns1 := f.Namespace.Name
 
 	cancelLogging := utils.StartPodLogs(f, driverNamespace)
 	// It would be safer to rename the gcePD driver, but that
@@ -814,7 +589,7 @@ func (g *gcePDCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.
 	// 	DriverContainerName:      "gce-driver",
 	// 	ProvisionerContainerName: "csi-external-provisioner",
 	// }
-	createGCESecrets(f.ClientSet, driverns)
+	createGCESecrets(f.ClientSet, ns2)
 
 	manifests := []string{
 		"test/e2e/testing-manifests/storage-csi/external-attacher/rbac.yaml",
@@ -833,13 +608,28 @@ func (g *gcePDCSIDriver) PrepareTest(f *framework.Framework) (*storageframework.
 		framework.Failf("waiting for csi driver node registration on: %v", err)
 	}
 
-	cleanupFunc := generateDriverCleanupFunc(
-		f,
-		"gce-pd",
-		testns,
-		driverns,
-		cleanup,
-		cancelLogging)
+	// Cleanup CSI driver and namespaces. This function needs to be idempotent and can be
+	// concurrently called from defer (or AfterEach) and AfterSuite action hooks.
+	cleanupFunc := func() {
+		ginkgo.By(fmt.Sprintf("deleting the test namespace: %s", ns1))
+		// Delete the primary namespace but its okay to fail here because this namespace will
+		// also be deleted by framework.Aftereach hook
+		tryFunc(func() { f.DeleteNamespace(ns1) })
+
+		ginkgo.By("uninstalling csi mock driver")
+		tryFunc(cleanup)
+		tryFunc(cancelLogging)
+
+		ginkgo.By(fmt.Sprintf("deleting the driver namespace: %s", ns2))
+		tryFunc(func() { f.DeleteNamespace(ns2) })
+		// cleanup function has already ran and hence we don't need to run it again.
+		// We do this as very last action because in-case defer(or AfterEach) races
+		// with AfterSuite and test routine gets killed then this block still
+		// runs in AfterSuite
+		framework.RemoveCleanupAction(g.cleanupHandle)
+
+	}
+	g.cleanupHandle = framework.AddCleanupAction(cleanupFunc)
 
 	return &storageframework.PerTestConfig{
 		Driver:          g,
@@ -905,36 +695,4 @@ func tryFunc(f func()) error {
 	}()
 	f()
 	return err
-}
-
-func generateDriverCleanupFunc(
-	f *framework.Framework,
-	driverName, testns, driverns string,
-	driverCleanup, cancelLogging func()) func() {
-
-	cleanupHandle := new(framework.CleanupActionHandle)
-
-	// Cleanup CSI driver and namespaces. This function needs to be idempotent and can be
-	// concurrently called from defer (or AfterEach) and AfterSuite action hooks.
-	cleanupFunc := func() {
-		ginkgo.By(fmt.Sprintf("deleting the test namespace: %s", testns))
-		// Delete the primary namespace but it's okay to fail here because this namespace will
-		// also be deleted by framework.Aftereach hook
-		tryFunc(func() { f.DeleteNamespace(testns) })
-
-		ginkgo.By(fmt.Sprintf("uninstalling csi %s driver", driverName))
-		tryFunc(driverCleanup)
-		tryFunc(cancelLogging)
-
-		ginkgo.By(fmt.Sprintf("deleting the driver namespace: %s", driverns))
-		tryFunc(func() { f.DeleteNamespace(driverns) })
-		// cleanup function has already ran and hence we don't need to run it again.
-		// We do this as very last action because in-case defer(or AfterEach) races
-		// with AfterSuite and test routine gets killed then this block still
-		// runs in AfterSuite
-		framework.RemoveCleanupAction(*cleanupHandle)
-	}
-
-	*cleanupHandle = framework.AddCleanupAction(cleanupFunc)
-	return cleanupFunc
 }

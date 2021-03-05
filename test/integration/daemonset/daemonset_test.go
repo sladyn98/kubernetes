@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/retry"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/daemon"
 	"k8s.io/kubernetes/pkg/scheduler"
@@ -533,7 +534,7 @@ func TestDaemonSetWithNodeSelectorLaunchesPods(t *testing.T) {
 						{
 							MatchFields: []v1.NodeSelectorRequirement{
 								{
-									Key:      metav1.ObjectNameField,
+									Key:      api.ObjectNameField,
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"node-1"},
 								},

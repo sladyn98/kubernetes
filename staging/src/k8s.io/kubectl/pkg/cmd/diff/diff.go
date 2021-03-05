@@ -487,7 +487,7 @@ func (o *DiffOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) error {
 		return err
 	}
 
-	o.DryRunVerifier = resource.NewDryRunVerifier(o.DynamicClient, f.OpenAPIGetter())
+	o.DryRunVerifier = resource.NewDryRunVerifier(o.DynamicClient, o.DiscoveryClient)
 
 	o.CmdNamespace, o.EnforceNamespace, err = f.ToRawKubeConfigLoader().Namespace()
 	if err != nil {

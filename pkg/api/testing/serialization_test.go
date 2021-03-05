@@ -239,7 +239,7 @@ func TestEncodePtr(t *testing.T) {
 			TerminationGracePeriodSeconds: &grace,
 
 			SecurityContext:    &api.PodSecurityContext{},
-			SchedulerName:      v1.DefaultSchedulerName,
+			SchedulerName:      api.DefaultSchedulerName,
 			EnableServiceLinks: &enableServiceLinks,
 			PreemptionPolicy:   &preemptNever,
 		},

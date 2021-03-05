@@ -33,7 +33,6 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2eservice "k8s.io/kubernetes/test/e2e/framework/service"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
-	"k8s.io/kubernetes/test/e2e/network/common"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
@@ -64,7 +63,7 @@ const (
 // Ref: https://api.semanticscholar.org/CorpusID:198903401
 // Boye, Magnus. "Netfilter Connection Tracking and NAT Implementation." (2012).
 
-var _ = common.SIGDescribe("Conntrack", func() {
+var _ = SIGDescribe("Conntrack", func() {
 
 	fr := framework.NewDefaultFramework("conntrack")
 
@@ -161,7 +160,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 		serverPod1.Spec.NodeName = serverNodeInfo.name
 		fr.PodClient().CreateSync(serverPod1)
 
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{podBackend1: {80}})
+		// Waiting for service to expose endpoint.
+		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{podBackend1: {80}})
+		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
 		// Note that the fact that Endpoints object already exists, does NOT mean
 		// that iptables (or whatever else is used) was already programmed.
@@ -187,7 +188,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 		framework.Logf("Cleaning up %s pod", podBackend1)
 		fr.PodClient().DeleteSync(podBackend1, metav1.DeleteOptions{}, framework.DefaultPodDeletionTimeout)
 
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{podBackend2: {80}})
+		// Waiting for service to expose endpoint.
+		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{podBackend2: {80}})
+		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
 		// Check that the second pod keeps receiving traffic
 		// UDP conntrack entries timeout is 30 sec by default
@@ -234,7 +237,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 		serverPod1.Spec.NodeName = serverNodeInfo.name
 		fr.PodClient().CreateSync(serverPod1)
 
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{podBackend1: {80}})
+		// Waiting for service to expose endpoint.
+		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{podBackend1: {80}})
+		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
 		// Note that the fact that Endpoints object already exists, does NOT mean
 		// that iptables (or whatever else is used) was already programmed.
@@ -260,7 +265,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 		framework.Logf("Cleaning up %s pod", podBackend1)
 		fr.PodClient().DeleteSync(podBackend1, metav1.DeleteOptions{}, framework.DefaultPodDeletionTimeout)
 
-		validateEndpointsPortsOrFail(cs, ns, serviceName, portsByPodName{podBackend2: {80}})
+		// Waiting for service to expose endpoint.
+		err = validateEndpointsPorts(cs, ns, serviceName, portsByPodName{podBackend2: {80}})
+		framework.ExpectNoError(err, "failed to validate endpoints for service %s in namespace: %s", serviceName, ns)
 
 		// Check that the second pod keeps receiving traffic
 		// UDP conntrack entries timeout is 30 sec by default
@@ -324,7 +331,12 @@ var _ = common.SIGDescribe("Conntrack", func() {
 				},
 			},
 		}
-		fr.PodClient().CreateSync(serverPod)
+		_, err := fr.ClientSet.CoreV1().Pods(fr.Namespace.Name).Create(context.TODO(), serverPod, metav1.CreateOptions{})
+		framework.ExpectNoError(err)
+
+		err = e2epod.WaitForPodsRunningReady(fr.ClientSet, fr.Namespace.Name, 1, 0, framework.PodReadyBeforeTimeout, map[string]string{})
+		framework.ExpectNoError(err)
+
 		ginkgo.By("Server pod created on node " + serverNodeInfo.name)
 
 		svc := &v1.Service{
@@ -341,7 +353,7 @@ var _ = common.SIGDescribe("Conntrack", func() {
 				},
 			},
 		}
-		_, err := fr.ClientSet.CoreV1().Services(fr.Namespace.Name).Create(context.TODO(), svc, metav1.CreateOptions{})
+		_, err = fr.ClientSet.CoreV1().Services(fr.Namespace.Name).Create(context.TODO(), svc, metav1.CreateOptions{})
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Server service created")
@@ -364,8 +376,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 				RestartPolicy: v1.RestartPolicyNever,
 			},
 		}
+		_, err = fr.ClientSet.CoreV1().Pods(fr.Namespace.Name).Create(context.TODO(), pod, metav1.CreateOptions{})
+		framework.ExpectNoError(err)
 
-		fr.PodClient().CreateSync(pod)
 		ginkgo.By("Client pod created")
 
 		// The client will open connections against the server
@@ -384,10 +397,9 @@ var _ = common.SIGDescribe("Conntrack", func() {
 		logs, err := e2epod.GetPodLogs(cs, ns, "boom-server", "boom-server")
 		framework.ExpectNoError(err)
 		if !strings.Contains(string(logs), "connection established") {
-			framework.Logf("boom-server pod logs: %s", logs)
 			framework.Failf("Boom server pod did not sent any bad packet to the client")
 		}
 		framework.Logf("boom-server pod logs: %s", logs)
-		framework.Logf("boom-server OK: did not receive any RST packet")
+		framework.Logf("boom-server did not receive any RST packet")
 	})
 })

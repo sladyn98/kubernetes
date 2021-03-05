@@ -21,8 +21,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"k8s.io/apimachinery/pkg/util/clock"
 )
 
 func TestExecute(t *testing.T) {
@@ -64,8 +62,6 @@ func TestExecuteDelayed(t *testing.T) {
 	})
 	now := time.Now()
 	then := now.Add(10 * time.Second)
-	fakeClock := clock.NewFakeClock(now)
-	queue.clock = fakeClock
 	queue.AddWork(NewWorkArgs("1", "1"), now, then)
 	queue.AddWork(NewWorkArgs("2", "2"), now, then)
 	queue.AddWork(NewWorkArgs("3", "3"), now, then)
@@ -76,7 +72,6 @@ func TestExecuteDelayed(t *testing.T) {
 	queue.AddWork(NewWorkArgs("3", "3"), now, then)
 	queue.AddWork(NewWorkArgs("4", "4"), now, then)
 	queue.AddWork(NewWorkArgs("5", "5"), now, then)
-	fakeClock.Step(11 * time.Second)
 	wg.Wait()
 	lastVal := atomic.LoadInt32(&testVal)
 	if lastVal != 5 {
@@ -95,8 +90,6 @@ func TestCancel(t *testing.T) {
 	})
 	now := time.Now()
 	then := now.Add(10 * time.Second)
-	fakeClock := clock.NewFakeClock(now)
-	queue.clock = fakeClock
 	queue.AddWork(NewWorkArgs("1", "1"), now, then)
 	queue.AddWork(NewWorkArgs("2", "2"), now, then)
 	queue.AddWork(NewWorkArgs("3", "3"), now, then)
@@ -109,7 +102,6 @@ func TestCancel(t *testing.T) {
 	queue.AddWork(NewWorkArgs("5", "5"), now, then)
 	queue.CancelWork(NewWorkArgs("2", "2").KeyFromWorkArgs())
 	queue.CancelWork(NewWorkArgs("4", "4").KeyFromWorkArgs())
-	fakeClock.Step(11 * time.Second)
 	wg.Wait()
 	lastVal := atomic.LoadInt32(&testVal)
 	if lastVal != 3 {
@@ -128,8 +120,6 @@ func TestCancelAndReadd(t *testing.T) {
 	})
 	now := time.Now()
 	then := now.Add(10 * time.Second)
-	fakeClock := clock.NewFakeClock(now)
-	queue.clock = fakeClock
 	queue.AddWork(NewWorkArgs("1", "1"), now, then)
 	queue.AddWork(NewWorkArgs("2", "2"), now, then)
 	queue.AddWork(NewWorkArgs("3", "3"), now, then)
@@ -143,7 +133,6 @@ func TestCancelAndReadd(t *testing.T) {
 	queue.CancelWork(NewWorkArgs("2", "2").KeyFromWorkArgs())
 	queue.CancelWork(NewWorkArgs("4", "4").KeyFromWorkArgs())
 	queue.AddWork(NewWorkArgs("2", "2"), now, then)
-	fakeClock.Step(11 * time.Second)
 	wg.Wait()
 	lastVal := atomic.LoadInt32(&testVal)
 	if lastVal != 4 {

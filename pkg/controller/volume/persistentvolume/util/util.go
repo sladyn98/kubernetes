@@ -29,7 +29,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	storagelisters "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/tools/reference"
-	storagehelpers "k8s.io/component-helpers/storage/volume"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 )
@@ -89,7 +89,7 @@ func IsDelayBindingProvisioning(claim *v1.PersistentVolumeClaim) bool {
 
 // IsDelayBindingMode checks if claim is in delay binding mode.
 func IsDelayBindingMode(claim *v1.PersistentVolumeClaim, classLister storagelisters.StorageClassLister) (bool, error) {
-	className := storagehelpers.GetPersistentVolumeClaimClass(claim)
+	className := v1helper.GetPersistentVolumeClaimClass(claim)
 	if className == "" {
 		return false, nil
 	}
@@ -188,7 +188,7 @@ func FindMatchingVolume(
 	var smallestVolume *v1.PersistentVolume
 	var smallestVolumeQty resource.Quantity
 	requestedQty := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	requestedClass := storagehelpers.GetPersistentVolumeClaimClass(claim)
+	requestedClass := v1helper.GetPersistentVolumeClaimClass(claim)
 
 	var selector labels.Selector
 	if claim.Spec.Selector != nil {
@@ -275,7 +275,7 @@ func FindMatchingVolume(
 		} else if selector != nil && !selector.Matches(labels.Set(volume.Labels)) {
 			continue
 		}
-		if storagehelpers.GetPersistentVolumeClass(volume) != requestedClass {
+		if v1helper.GetPersistentVolumeClass(volume) != requestedClass {
 			continue
 		}
 		if !nodeAffinityValid {

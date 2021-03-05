@@ -34,7 +34,6 @@ import (
 	"k8s.io/client-go/informers"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/component-base/featuregate"
-	kubeletapis "k8s.io/kubelet/pkg/apis"
 	podutil "k8s.io/kubernetes/pkg/api/pod"
 	authenticationapi "k8s.io/kubernetes/pkg/apis/authentication"
 	coordapi "k8s.io/kubernetes/pkg/apis/coordination"
@@ -43,6 +42,7 @@ import (
 	storage "k8s.io/kubernetes/pkg/apis/storage"
 	"k8s.io/kubernetes/pkg/auth/nodeidentifier"
 	"k8s.io/kubernetes/pkg/features"
+	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 )
 
 // PluginName is a string with the name of the plugin

@@ -344,7 +344,7 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 
 			var betaTest *testsuites.StorageClassTest
 			for i, t := range tests {
-				// Beware of closure, use local variables instead of those from
+				// Beware of clojure, use local variables instead of those from
 				// outer scope
 				test := t
 
@@ -365,37 +365,26 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 					StorageClassName: &test.Class.Name,
 					VolumeMode:       &test.VolumeMode,
 				}, ns)
-
-				// overwrite StorageClass spec with provisioned StorageClass
-				class, clearStorageClass := testsuites.SetupStorageClass(test.Client, test.Class)
-				test.Class = class
-				defer clearStorageClass()
-
 				test.TestDynamicProvisioning()
 			}
 
 			// Run the last test with storage.k8s.io/v1beta1 on pvc
 			if betaTest != nil {
 				ginkgo.By("Testing " + betaTest.Name + " with beta volume provisioning")
-				betaClass := newBetaStorageClass(*betaTest, "beta")
-				// create beta class manually
-				betaClass, err := c.StorageV1beta1().StorageClasses().Create(context.TODO(), betaClass, metav1.CreateOptions{})
+				class := newBetaStorageClass(*betaTest, "beta")
+				// we need to create the class manually, testDynamicProvisioning does not accept beta class
+				class, err := c.StorageV1beta1().StorageClasses().Create(context.TODO(), class, metav1.CreateOptions{})
 				framework.ExpectNoError(err)
-				defer deleteStorageClass(c, betaClass.Name)
-
-				// fetch V1beta1 StorageClass as V1 object for the test
-				class, err := c.StorageV1().StorageClasses().Get(context.TODO(), betaClass.Name, metav1.GetOptions{})
-				framework.ExpectNoError(err)
+				defer deleteStorageClass(c, class.Name)
 
 				betaTest.Client = c
-				betaTest.Class = class
+				betaTest.Class = nil
 				betaTest.Claim = e2epv.MakePersistentVolumeClaim(e2epv.PersistentVolumeClaimConfig{
 					ClaimSize:        betaTest.ClaimSize,
 					StorageClassName: &class.Name,
 					VolumeMode:       &betaTest.VolumeMode,
 				}, ns)
 				betaTest.Claim.Spec.StorageClassName = &(class.Name)
-
 				(*betaTest).TestDynamicProvisioning()
 			}
 		})
@@ -430,9 +419,6 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 				StorageClassName: &test.Class.Name,
 				VolumeMode:       &test.VolumeMode,
 			}, ns)
-			_, clearStorageClass := testsuites.SetupStorageClass(test.Client, test.Class)
-			defer clearStorageClass()
-
 			pv := test.TestDynamicProvisioning()
 
 			ginkgo.By(fmt.Sprintf("waiting for the provisioned PV %q to enter phase %s", pv.Name, v1.VolumeReleased))
@@ -677,13 +663,7 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 				VolumeMode:       &test.VolumeMode,
 			}, ns)
 
-			// rewrite the storageClass with the computed storageClass
-			storageClass, clearStorageClass := testsuites.SetupStorageClass(test.Client, test.Class)
-			defer clearStorageClass()
-			test.Class = storageClass
-
 			ginkgo.By("creating a claim with a external provisioning annotation")
-
 			test.TestDynamicProvisioning()
 		})
 	})
@@ -705,11 +685,6 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 				ClaimSize:  test.ClaimSize,
 				VolumeMode: &test.VolumeMode,
 			}, ns)
-			// NOTE: this test assumes that there's a default storageclass
-			storageClass, clearStorageClass := testsuites.SetupStorageClass(test.Client, nil)
-			test.Class = storageClass
-			defer clearStorageClass()
-
 			test.TestDynamicProvisioning()
 		})
 
@@ -790,7 +765,7 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 		})
 	})
 
-	ginkgo.Describe("GlusterDynamicProvisioner", func() {
+	framework.KubeDescribe("GlusterDynamicProvisioner", func() {
 		ginkgo.It("should create and delete persistent volumes [fast]", func() {
 			e2eskipper.SkipIfProviderIs("gke")
 			ginkgo.By("creating a Gluster DP server Pod")
@@ -816,8 +791,6 @@ var _ = utils.SIGDescribe("Dynamic Provisioning", func() {
 				VolumeMode:       &test.VolumeMode,
 			}, ns)
 
-			_, clearStorageClass := testsuites.SetupStorageClass(test.Client, test.Class)
-			defer clearStorageClass()
 			test.TestDynamicProvisioning()
 		})
 	})

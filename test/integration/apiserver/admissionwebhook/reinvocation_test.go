@@ -34,7 +34,8 @@ import (
 	"time"
 
 	"k8s.io/api/admission/v1beta1"
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	admissionv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	registrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -83,12 +84,12 @@ func patchAnnotationValue(configuration, webhook string, patch string) string {
 
 // testWebhookReinvocationPolicy ensures that the admission webhook reinvocation policy is applied correctly.
 func testWebhookReinvocationPolicy(t *testing.T, watchCache bool) {
-	reinvokeNever := admissionregistrationv1.NeverReinvocationPolicy
-	reinvokeIfNeeded := admissionregistrationv1.IfNeededReinvocationPolicy
+	reinvokeNever := registrationv1beta1.NeverReinvocationPolicy
+	reinvokeIfNeeded := registrationv1beta1.IfNeededReinvocationPolicy
 
 	type testWebhook struct {
 		path           string
-		policy         *admissionregistrationv1.ReinvocationPolicyType
+		policy         *registrationv1beta1.ReinvocationPolicyType
 		objectSelector *metav1.LabelSelector
 	}
 
@@ -338,48 +339,46 @@ func testWebhookReinvocationPolicy(t *testing.T, watchCache bool) {
 				t.Fatal(err)
 			}
 
-			fail := admissionregistrationv1.Fail
-			webhooks := []admissionregistrationv1.MutatingWebhook{}
+			fail := admissionv1beta1.Fail
+			webhooks := []admissionv1beta1.MutatingWebhook{}
 			for j, webhook := range tt.webhooks {
 				endpoint := webhookServer.URL + webhook.path
 				name := fmt.Sprintf("admission.integration.test.%d.%s", j, strings.TrimPrefix(webhook.path, "/"))
-				webhooks = append(webhooks, admissionregistrationv1.MutatingWebhook{
+				webhooks = append(webhooks, admissionv1beta1.MutatingWebhook{
 					Name: name,
-					ClientConfig: admissionregistrationv1.WebhookClientConfig{
+					ClientConfig: admissionv1beta1.WebhookClientConfig{
 						URL:      &endpoint,
 						CABundle: localhostCert,
 					},
-					Rules: []admissionregistrationv1.RuleWithOperations{{
-						Operations: []admissionregistrationv1.OperationType{admissionregistrationv1.OperationAll},
-						Rule:       admissionregistrationv1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"pods"}},
+					Rules: []admissionv1beta1.RuleWithOperations{{
+						Operations: []admissionv1beta1.OperationType{admissionv1beta1.OperationAll},
+						Rule:       admissionv1beta1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"pods"}},
 					}},
 					ObjectSelector:          webhook.objectSelector,
 					NamespaceSelector:       &metav1.LabelSelector{MatchLabels: nsLabels},
 					FailurePolicy:           &fail,
 					ReinvocationPolicy:      webhook.policy,
 					AdmissionReviewVersions: []string{"v1beta1"},
-					SideEffects:             &noSideEffects,
 				})
 			}
 			// Register a marker checking webhook with each set of webhook configurations
 			markerEndpoint := webhookServer.URL + "/marker"
-			webhooks = append(webhooks, admissionregistrationv1.MutatingWebhook{
+			webhooks = append(webhooks, admissionv1beta1.MutatingWebhook{
 				Name: "admission.integration.test.marker",
-				ClientConfig: admissionregistrationv1.WebhookClientConfig{
+				ClientConfig: admissionv1beta1.WebhookClientConfig{
 					URL:      &markerEndpoint,
 					CABundle: localhostCert,
 				},
-				Rules: []admissionregistrationv1.RuleWithOperations{{
-					Operations: []admissionregistrationv1.OperationType{admissionregistrationv1.OperationAll},
-					Rule:       admissionregistrationv1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"pods"}},
+				Rules: []admissionv1beta1.RuleWithOperations{{
+					Operations: []admissionv1beta1.OperationType{admissionv1beta1.OperationAll},
+					Rule:       admissionv1beta1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"pods"}},
 				}},
 				NamespaceSelector:       &metav1.LabelSelector{MatchLabels: markerNsLabels},
 				ObjectSelector:          &metav1.LabelSelector{MatchLabels: map[string]string{"marker": "true"}},
 				AdmissionReviewVersions: []string{"v1beta1"},
-				SideEffects:             &noSideEffects,
 			})
 
-			cfg, err := client.AdmissionregistrationV1().MutatingWebhookConfigurations().Create(context.TODO(), &admissionregistrationv1.MutatingWebhookConfiguration{
+			cfg, err := client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Create(context.TODO(), &admissionv1beta1.MutatingWebhookConfiguration{
 				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("admission.integration.test-%d", i)},
 				Webhooks:   webhooks,
 			}, metav1.CreateOptions{})
@@ -387,7 +386,7 @@ func testWebhookReinvocationPolicy(t *testing.T, watchCache bool) {
 				t.Fatal(err)
 			}
 			defer func() {
-				err := client.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(context.TODO(), cfg.GetName(), metav1.DeleteOptions{})
+				err := client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Delete(context.TODO(), cfg.GetName(), metav1.DeleteOptions{})
 				if err != nil {
 					t.Fatal(err)
 				}

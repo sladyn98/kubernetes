@@ -22,18 +22,17 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/cloud-provider/app"
 	"k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/options"
-	cliflag "k8s.io/component-base/cli/flag"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 )
 
 // TearDownFunc is to be called to tear down a test server.
@@ -43,7 +42,7 @@ type TearDownFunc func()
 type TestServer struct {
 	LoopbackClientConfig *restclient.Config // Rest client config using the magic token
 	Options              *options.CloudControllerManagerOptions
-	Config               *config.CompletedConfig
+	Config               *config.Config
 	TearDownFn           TearDownFunc // TearDown function
 	TmpDir               string       // Temp Dir used, by the apiserver
 }
@@ -63,8 +62,6 @@ type Logger interface {
 // 		 enough time to remove temporary files.
 func StartTestServer(t Logger, customFlags []string) (result TestServer, err error) {
 	stopCh := make(chan struct{})
-	configDoneCh := make(chan struct{})
-	var capturedConfig config.CompletedConfig
 	tearDown := func() {
 		close(stopCh)
 		if len(result.TmpDir) != 0 {
@@ -82,95 +79,58 @@ func StartTestServer(t Logger, customFlags []string) (result TestServer, err err
 		return result, fmt.Errorf("failed to create temp dir: %v", err)
 	}
 
+	fs := pflag.NewFlagSet("test", pflag.PanicOnError)
+
 	s, err := options.NewCloudControllerManagerOptions()
 	if err != nil {
 		return TestServer{}, err
 	}
-
-	cloudInitializer := func(config *config.CompletedConfig) cloudprovider.Interface {
-		capturedConfig = *config
-		// send signal to indicate the capturedConfig has been properly set
-		close(configDoneCh)
-		cloudConfig := config.ComponentConfig.KubeCloudShared.CloudProvider
-		cloud, err := cloudprovider.InitCloudProvider(cloudConfig.Name, cloudConfig.CloudConfigFile)
+	namedFlagSets := s.Flags([]string{}, []string{})
+	for _, f := range namedFlagSets.FlagSets {
+		fs.AddFlagSet(f)
+	}
+	fs.Parse(customFlags)
+	if s.SecureServing.BindPort != 0 {
+		s.SecureServing.Listener, s.SecureServing.BindPort, err = createListenerOnFreePort()
 		if err != nil {
-			t.Fatalf("Cloud provider could not be initialized: %v", err)
+			return result, fmt.Errorf("failed to create listener: %v", err)
 		}
 		s.SecureServing.ServerCert.CertDirectory = result.TmpDir
-		if cloud == nil {
-			t.Fatalf("Cloud provider is nil")
-		}
-		return cloud
-	}
-	fss := cliflag.NamedFlagSets{}
-	command := app.NewCloudControllerManagerCommand(s, cloudInitializer, app.DefaultInitFuncConstructors, fss, stopCh)
-	pflag.CommandLine.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
 
-	commandArgs := []string{}
-	listeners := []net.Listener{}
-	disableInsecure := false
-	disableSecure := false
-	for _, arg := range customFlags {
-		if strings.HasPrefix(arg, "--secure-port=") {
-			if arg == "--secure-port=0" {
-				commandArgs = append(commandArgs, arg)
-				disableSecure = true
-			}
-		} else if strings.HasPrefix(arg, "--port=") {
-			if arg == "--port=0" {
-				commandArgs = append(commandArgs, arg)
-				disableInsecure = true
-			}
-		} else if strings.HasPrefix(arg, "--cert-dir=") {
-			// skip it
-		} else {
-			commandArgs = append(commandArgs, arg)
-		}
+		t.Logf("cloud-controller-manager will listen securely on port %d...", s.SecureServing.BindPort)
 	}
 
-	if !disableSecure {
-		listener, bindPort, err := createListenerOnFreePort()
+	if s.InsecureServing.BindPort != 0 {
+		s.InsecureServing.Listener, s.InsecureServing.BindPort, err = createListenerOnFreePort()
 		if err != nil {
 			return result, fmt.Errorf("failed to create listener: %v", err)
 		}
-		listeners = append(listeners, listener)
-		commandArgs = append(commandArgs, fmt.Sprintf("--secure-port=%d", bindPort))
-		commandArgs = append(commandArgs, fmt.Sprintf("--cert-dir=%s", result.TmpDir))
 
-		t.Logf("cloud-controller-manager will listen securely on port %d...", bindPort)
+		t.Logf("cloud-controller-manager will listen insecurely on port %d...", s.InsecureServing.BindPort)
 	}
-	if !disableInsecure {
-		listener, bindPort, err := createListenerOnFreePort()
-		if err != nil {
-			return result, fmt.Errorf("failed to create listener: %v", err)
-		}
-		listeners = append(listeners, listener)
-		commandArgs = append(commandArgs, fmt.Sprintf("--port=%d", bindPort))
 
-		t.Logf("cloud-controller-manager will listen securely on port %d...", bindPort)
+	config, err := s.Config([]string{}, []string{})
+	if err != nil {
+		return result, fmt.Errorf("failed to create config from options: %v", err)
 	}
-	for _, listener := range listeners {
-		listener.Close()
+	cloudConfig := config.Complete().ComponentConfig.KubeCloudShared.CloudProvider
+	cloud, err := cloudprovider.InitCloudProvider(cloudConfig.Name, cloudConfig.CloudConfigFile)
+	if err != nil {
+		return result, fmt.Errorf("cloud provider could not be initialized: %v", err)
+	}
+	if cloud == nil {
+		return result, fmt.Errorf("cloud provider is nil")
 	}
 
 	errCh := make(chan error)
-	go func() {
-		command.SetArgs(commandArgs)
-		if err := command.Execute(); err != nil {
+	go func(stopCh <-chan struct{}) {
+		if err := app.Run(config.Complete(), app.DefaultControllerInitializers(config.Complete(), cloud), stopCh); err != nil {
 			errCh <- err
 		}
-		close(errCh)
-	}()
-
-	select {
-	case <-configDoneCh:
-
-	case err := <-errCh:
-		return result, err
-	}
+	}(stopCh)
 
 	t.Logf("Waiting for /healthz to be ok...")
-	client, err := kubernetes.NewForConfig(capturedConfig.LoopbackClientConfig)
+	client, err := kubernetes.NewForConfig(config.LoopbackClientConfig)
 	if err != nil {
 		return result, fmt.Errorf("failed to create a client: %v", err)
 	}
@@ -194,9 +154,9 @@ func StartTestServer(t Logger, customFlags []string) (result TestServer, err err
 	}
 
 	// from here the caller must call tearDown
-	result.LoopbackClientConfig = capturedConfig.LoopbackClientConfig
+	result.LoopbackClientConfig = config.LoopbackClientConfig
 	result.Options = s
-	result.Config = &capturedConfig
+	result.Config = config
 	result.TearDownFn = tearDown
 
 	return result, nil

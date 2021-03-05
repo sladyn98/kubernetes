@@ -99,19 +99,12 @@ type SummaryVec struct {
 func NewSummaryVec(opts *SummaryOpts, labels []string) *SummaryVec {
 	opts.StabilityLevel.setDefaults()
 
-	fqName := BuildFQName(opts.Namespace, opts.Subsystem, opts.Name)
-	allowListLock.RLock()
-	if allowList, ok := labelValueAllowLists[fqName]; ok {
-		opts.LabelValueAllowLists = allowList
-	}
-	allowListLock.RUnlock()
-
 	v := &SummaryVec{
 		SummaryOpts:    opts,
 		originalLabels: labels,
 		lazyMetric:     lazyMetric{},
 	}
-	v.lazyInit(v, fqName)
+	v.lazyInit(v, BuildFQName(opts.Namespace, opts.Subsystem, opts.Name))
 	return v
 }
 
@@ -146,9 +139,6 @@ func (v *SummaryVec) WithLabelValues(lvs ...string) ObserverMetric {
 	if !v.IsCreated() {
 		return noop
 	}
-	if v.LabelValueAllowLists != nil {
-		v.LabelValueAllowLists.ConstrainToAllowedList(v.originalLabels, lvs)
-	}
 	return v.SummaryVec.WithLabelValues(lvs...)
 }
 
@@ -159,9 +149,6 @@ func (v *SummaryVec) WithLabelValues(lvs ...string) ObserverMetric {
 func (v *SummaryVec) With(labels map[string]string) ObserverMetric {
 	if !v.IsCreated() {
 		return noop
-	}
-	if v.LabelValueAllowLists != nil {
-		v.LabelValueAllowLists.ConstrainLabelMap(labels)
 	}
 	return v.SummaryVec.With(labels)
 }

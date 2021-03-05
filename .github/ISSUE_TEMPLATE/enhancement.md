@@ -1,16 +1,10 @@
 ---
-name: Enhancement Tracking Issue
-about: Provide supporting details for a feature in development
+name: Enhancement Request
+about: Suggest an enhancement to the Kubernetes project
 labels: kind/feature
 
 ---
-<!-- Feature requests are unlikely to make progress as an issue.
-
-Instead, please suggest enhancements by engaging with SIGs on slack and mailing lists.
-
-A proposal that works through the design along with the implications of the change can be opened as a KEP:
-https://git.k8s.io/enhancements/keps#kubernetes-enhancement-proposals-keps
--->
+<!-- Please only use this template for submitting enhancement requests -->
 
 #### What would you like to be added:
 

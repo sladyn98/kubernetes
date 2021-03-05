@@ -35,7 +35,7 @@ const (
 	eventRetryTimeout = 1 * time.Minute
 )
 
-var _ = SIGDescribe("Events", func() {
+var _ = ginkgo.Describe("[sig-api-machinery] Events", func() {
 	f := framework.NewDefaultFramework("events")
 
 	/*

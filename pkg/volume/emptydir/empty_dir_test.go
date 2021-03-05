@@ -35,6 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
+	"k8s.io/kubernetes/pkg/volume/util"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/mount-utils"
 )
@@ -192,7 +193,7 @@ func doTestPlugin(t *testing.T, config pluginTestConfig) {
 				Path: volumePath,
 			},
 		}
-		volumeutil.SetReady(metadataDir)
+		util.SetReady(metadataDir)
 	}
 
 	mounter, err := plug.(*emptyDirPlugin).newMounterInternal(volume.NewSpecFromVolume(spec),

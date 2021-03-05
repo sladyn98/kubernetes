@@ -23,7 +23,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+
 	"k8s.io/apiextensions-apiserver/test/integration/fixtures"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,8 +36,8 @@ func TestFinalization(t *testing.T) {
 	require.NoError(t, err)
 	defer tearDown()
 
-	noxuDefinition := fixtures.NewNoxuV1CustomResourceDefinition(apiextensionsv1.ClusterScoped)
-	noxuDefinition, err = fixtures.CreateNewV1CustomResourceDefinition(noxuDefinition, apiExtensionClient, dynamicClient)
+	noxuDefinition := fixtures.NewNoxuCustomResourceDefinition(apiextensionsv1beta1.ClusterScoped)
+	noxuDefinition, err = fixtures.CreateNewCustomResourceDefinition(noxuDefinition, apiExtensionClient, dynamicClient)
 	require.NoError(t, err)
 
 	ns := "not-the-default"
@@ -99,8 +100,8 @@ func TestFinalizationAndDeletion(t *testing.T) {
 	defer tearDown()
 
 	// Create a CRD.
-	noxuDefinition := fixtures.NewNoxuV1CustomResourceDefinition(apiextensionsv1.ClusterScoped)
-	noxuDefinition, err = fixtures.CreateNewV1CustomResourceDefinition(noxuDefinition, apiExtensionClient, dynamicClient)
+	noxuDefinition := fixtures.NewNoxuCustomResourceDefinition(apiextensionsv1beta1.ClusterScoped)
+	noxuDefinition, err = fixtures.CreateNewCustomResourceDefinition(noxuDefinition, apiExtensionClient, dynamicClient)
 	require.NoError(t, err)
 
 	// Create a CR with a finalizer.
@@ -128,7 +129,7 @@ func TestFinalizationAndDeletion(t *testing.T) {
 	require.NotNil(t, gottenNoxuInstance.GetDeletionTimestamp())
 
 	// Delete the CRD.
-	fixtures.DeleteV1CustomResourceDefinition(noxuDefinition, apiExtensionClient)
+	fixtures.DeleteCustomResourceDefinition(noxuDefinition, apiExtensionClient)
 
 	// Check is CR still there after the CRD deletion.
 	gottenNoxuInstance, err = noxuResourceClient.Get(context.TODO(), name, metav1.GetOptions{})
@@ -156,7 +157,7 @@ func TestFinalizationAndDeletion(t *testing.T) {
 	}
 
 	err = wait.Poll(500*time.Millisecond, wait.ForeverTestTimeout, func() (bool, error) {
-		_, err = apiExtensionClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), noxuDefinition.Name, metav1.GetOptions{})
+		_, err = apiExtensionClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), noxuDefinition.Name, metav1.GetOptions{})
 		return errors.IsNotFound(err), err
 	})
 	if !errors.IsNotFound(err) {

@@ -38,7 +38,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller/volume/common"
-	ephemeralvolumemetrics "k8s.io/kubernetes/pkg/controller/volume/ephemeral/metrics"
 	"k8s.io/kubernetes/pkg/controller/volume/events"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
@@ -90,8 +89,6 @@ func NewController(
 		pvcsSynced: pvcInformer.Informer().HasSynced,
 		queue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ephemeral_volume"),
 	}
-
-	ephemeralvolumemetrics.RegisterMetrics()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -281,10 +278,8 @@ func (ec *ephemeralController) handleVolume(pod *v1.Pod, vol v1.Volume) error {
 		},
 		Spec: ephemeral.VolumeClaimTemplate.Spec,
 	}
-	ephemeralvolumemetrics.EphemeralVolumeCreateAttempts.Inc()
 	_, err = ec.kubeClient.CoreV1().PersistentVolumeClaims(pod.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {
-		ephemeralvolumemetrics.EphemeralVolumeCreateFailures.Inc()
 		return fmt.Errorf("create PVC %s: %v", pvcName, err)
 	}
 	return nil

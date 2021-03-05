@@ -60,16 +60,6 @@ const (
 	permit                      = "Permit"
 )
 
-var allClusterEvents = []framework.ClusterEvent{
-	{Resource: framework.Pod, ActionType: framework.All},
-	{Resource: framework.Node, ActionType: framework.All},
-	{Resource: framework.CSINode, ActionType: framework.All},
-	{Resource: framework.PersistentVolume, ActionType: framework.All},
-	{Resource: framework.PersistentVolumeClaim, ActionType: framework.All},
-	{Resource: framework.Service, ActionType: framework.All},
-	{Resource: framework.StorageClass, ActionType: framework.All},
-}
-
 var configDecoder = scheme.Codecs.UniversalDecoder()
 
 // frameworkImpl is the component responsible for initializing and running scheduler
@@ -98,8 +88,7 @@ type frameworkImpl struct {
 	metricsRecorder *metricsRecorder
 	profileName     string
 
-	extenders []framework.Extender
-	framework.PodNominator
+	preemptHandle framework.PreemptHandle
 
 	// Indicates that RunFilterPlugins should accumulate all failed statuses and not return
 	// after the first failure.
@@ -133,11 +122,6 @@ func (f *frameworkImpl) getExtensionPoints(plugins *config.Plugins) []extensionP
 	}
 }
 
-// Extenders returns the registered extenders.
-func (f *frameworkImpl) Extenders() []framework.Extender {
-	return f.extenders
-}
-
 type frameworkOptions struct {
 	clientSet            clientset.Interface
 	eventRecorder        events.EventRecorder
@@ -149,7 +133,6 @@ type frameworkOptions struct {
 	extenders            []framework.Extender
 	runAllFilters        bool
 	captureProfile       CaptureProfile
-	clusterEventMap      map[framework.ClusterEvent]sets.String
 }
 
 // Option for the frameworkImpl.
@@ -232,15 +215,21 @@ func WithCaptureProfile(c CaptureProfile) Option {
 func defaultFrameworkOptions() frameworkOptions {
 	return frameworkOptions{
 		metricsRecorder: newMetricsRecorder(1000, time.Second),
-		clusterEventMap: make(map[framework.ClusterEvent]sets.String),
 	}
 }
 
-// WithClusterEventMap sets clusterEventMap for the scheduling frameworkImpl.
-func WithClusterEventMap(m map[framework.ClusterEvent]sets.String) Option {
-	return func(o *frameworkOptions) {
-		o.clusterEventMap = m
-	}
+// TODO(#91029): move this to frameworkImpl runtime package.
+var _ framework.PreemptHandle = &preemptHandle{}
+
+type preemptHandle struct {
+	extenders []framework.Extender
+	framework.PodNominator
+	framework.PluginsRunner
+}
+
+// Extenders returns the registered extenders.
+func (ph *preemptHandle) Extenders() []framework.Extender {
+	return ph.extenders
 }
 
 var _ framework.Framework = &frameworkImpl{}
@@ -263,8 +252,11 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 		metricsRecorder:       options.metricsRecorder,
 		profileName:           options.profileName,
 		runAllFilters:         options.runAllFilters,
-		extenders:             options.extenders,
-		PodNominator:          options.podNominator,
+	}
+	f.preemptHandle = &preemptHandle{
+		extenders:     options.extenders,
+		PodNominator:  options.podNominator,
+		PluginsRunner: f,
 	}
 	if plugins == nil {
 		return f, nil
@@ -310,9 +302,6 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)
 		}
 		pluginsMap[name] = p
-
-		// Update ClusterEventMap in place.
-		fillEventToPluginMap(p, options.clusterEventMap)
 
 		// a weight of zero is not permitted, plugins can be disabled explicitly
 		// when configured.
@@ -363,37 +352,6 @@ func NewFramework(r Registry, plugins *config.Plugins, args []config.PluginConfi
 	}
 
 	return f, nil
-}
-
-func fillEventToPluginMap(p framework.Plugin, eventToPlugins map[framework.ClusterEvent]sets.String) {
-	ext, ok := p.(framework.EnqueueExtensions)
-	if !ok {
-		// If interface EnqueueExtensions is not implemented, register the default events
-		// to the plugin. This is to ensure backward compatibility.
-		registerClusterEvents(p.Name(), eventToPlugins, allClusterEvents)
-		return
-	}
-
-	events := ext.EventsToRegister()
-	// It's rare that a plugin implements EnqueueExtensions but returns nil.
-	// We treat it as: the plugin is not interested in any event, and hence pod failed by that plugin
-	// cannot be moved by any regular cluster event.
-	if len(events) == 0 {
-		klog.InfoS("Plugin's EventsToRegister() returned nil", "plugin", p.Name())
-		return
-	}
-	// The most common case: a plugin implements EnqueueExtensions and returns non-nil result.
-	registerClusterEvents(p.Name(), eventToPlugins, events)
-}
-
-func registerClusterEvents(name string, eventToPlugins map[framework.ClusterEvent]sets.String, evts []framework.ClusterEvent) {
-	for _, evt := range evts {
-		if eventToPlugins[evt] == nil {
-			eventToPlugins[evt] = sets.NewString(name)
-		} else {
-			eventToPlugins[evt].Insert(name)
-		}
-	}
 }
 
 // getPluginArgsOrDefault returns a configuration provided by the user or builds
@@ -648,6 +606,7 @@ func (f *frameworkImpl) runPostFilterPlugin(ctx context.Context, pl framework.Po
 func (f *frameworkImpl) RunFilterPluginsWithNominatedPods(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
 	var status *framework.Status
 
+	ph := f.PreemptHandle()
 	podsAdded := false
 	// We run filters twice in some cases. If the node has greater or equal priority
 	// nominated pods, we run them when those pods are added to PreFilter state and nodeInfo.
@@ -672,7 +631,7 @@ func (f *frameworkImpl) RunFilterPluginsWithNominatedPods(ctx context.Context, s
 		nodeInfoToUse := info
 		if i == 0 {
 			var err error
-			podsAdded, stateToUse, nodeInfoToUse, err = addNominatedPods(ctx, f, pod, state, info)
+			podsAdded, stateToUse, nodeInfoToUse, err = addNominatedPods(ctx, ph, pod, state, info)
 			if err != nil {
 				return framework.AsStatus(err)
 			}
@@ -680,7 +639,7 @@ func (f *frameworkImpl) RunFilterPluginsWithNominatedPods(ctx context.Context, s
 			break
 		}
 
-		statusMap := f.RunFilterPlugins(ctx, stateToUse, pod, nodeInfoToUse)
+		statusMap := ph.RunFilterPlugins(ctx, stateToUse, pod, nodeInfoToUse)
 		status = statusMap.Merge()
 		if !status.IsSuccess() && !status.IsUnschedulable() {
 			return status
@@ -693,22 +652,23 @@ func (f *frameworkImpl) RunFilterPluginsWithNominatedPods(ctx context.Context, s
 // addNominatedPods adds pods with equal or greater priority which are nominated
 // to run on the node. It returns 1) whether any pod was added, 2) augmented cycleState,
 // 3) augmented nodeInfo.
-func addNominatedPods(ctx context.Context, fh framework.Handle, pod *v1.Pod, state *framework.CycleState, nodeInfo *framework.NodeInfo) (bool, *framework.CycleState, *framework.NodeInfo, error) {
-	if fh == nil || nodeInfo.Node() == nil {
+func addNominatedPods(ctx context.Context, ph framework.PreemptHandle, pod *v1.Pod, state *framework.CycleState, nodeInfo *framework.NodeInfo) (bool, *framework.CycleState, *framework.NodeInfo, error) {
+	if ph == nil || nodeInfo.Node() == nil {
 		// This may happen only in tests.
 		return false, state, nodeInfo, nil
 	}
-	nominatedPodInfos := fh.NominatedPodsForNode(nodeInfo.Node().Name)
-	if len(nominatedPodInfos) == 0 {
+	nominatedPods := ph.NominatedPodsForNode(nodeInfo.Node().Name)
+	if len(nominatedPods) == 0 {
 		return false, state, nodeInfo, nil
 	}
 	nodeInfoOut := nodeInfo.Clone()
 	stateOut := state.Clone()
 	podsAdded := false
-	for _, pi := range nominatedPodInfos {
-		if corev1.PodPriority(pi.Pod) >= corev1.PodPriority(pod) && pi.Pod.UID != pod.UID {
-			nodeInfoOut.AddPodInfo(pi)
-			status := fh.RunPreFilterExtensionAddPod(ctx, stateOut, pod, pi, nodeInfoOut)
+	for _, p := range nominatedPods {
+		if corev1.PodPriority(p) >= corev1.PodPriority(pod) && p.UID != pod.UID {
+			podInfoToAdd := framework.NewPodInfo(p)
+			nodeInfoOut.AddPodInfo(podInfoToAdd)
+			status := ph.RunPreFilterExtensionAddPod(ctx, stateOut, pod, podInfoToAdd, nodeInfoOut)
 			if !status.IsSuccess() {
 				return false, state, nodeInfo, status.AsError()
 			}
@@ -1173,6 +1133,11 @@ func (f *frameworkImpl) pluginsNeeded(plugins *config.Plugins) map[string]config
 		find(e.plugins)
 	}
 	return pgMap
+}
+
+// PreemptHandle returns the internal preemptHandle object.
+func (f *frameworkImpl) PreemptHandle() framework.PreemptHandle {
+	return f.preemptHandle
 }
 
 // ProfileName returns the profile name associated to this framework.

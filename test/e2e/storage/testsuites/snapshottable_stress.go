@@ -194,9 +194,10 @@ func (t *snapshottableStressTestSuite) DefineTests(driver storageframework.TestD
 			wg   sync.WaitGroup
 		)
 
-		wg.Add(len(stressTest.snapshots))
-		for _, snapshot := range stressTest.snapshots {
-			go func(snapshot *storageframework.SnapshotResource) {
+		for i, snapshot := range stressTest.snapshots {
+			wg.Add(1)
+
+			go func(i int, snapshot *storageframework.SnapshotResource) {
 				defer ginkgo.GinkgoRecover()
 				defer wg.Done()
 
@@ -205,13 +206,14 @@ func (t *snapshottableStressTestSuite) DefineTests(driver storageframework.TestD
 				mu.Lock()
 				defer mu.Unlock()
 				errs = append(errs, err)
-			}(snapshot)
+			}(i, snapshot)
 		}
 		wg.Wait()
 
-		wg.Add(len(stressTest.pods))
-		for _, pod := range stressTest.pods {
-			go func(pod *v1.Pod) {
+		for i, pod := range stressTest.pods {
+			wg.Add(1)
+
+			go func(i int, pod *v1.Pod) {
 				defer ginkgo.GinkgoRecover()
 				defer wg.Done()
 
@@ -220,13 +222,14 @@ func (t *snapshottableStressTestSuite) DefineTests(driver storageframework.TestD
 				mu.Lock()
 				defer mu.Unlock()
 				errs = append(errs, err)
-			}(pod)
+			}(i, pod)
 		}
 		wg.Wait()
 
-		wg.Add(len(stressTest.volumes))
-		for _, volume := range stressTest.volumes {
-			go func(volume *storageframework.VolumeResource) {
+		for i, volume := range stressTest.volumes {
+			wg.Add(1)
+
+			go func(i int, volume *storageframework.VolumeResource) {
 				defer ginkgo.GinkgoRecover()
 				defer wg.Done()
 
@@ -235,7 +238,7 @@ func (t *snapshottableStressTestSuite) DefineTests(driver storageframework.TestD
 				mu.Lock()
 				defer mu.Unlock()
 				errs = append(errs, err)
-			}(volume)
+			}(i, volume)
 		}
 		wg.Wait()
 

@@ -218,7 +218,11 @@ func (o *ApplyOptions) Complete(f cmdutil.Factory, cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	o.DryRunVerifier = resource.NewDryRunVerifier(o.DynamicClient, f.OpenAPIGetter())
+	discoveryClient, err := f.ToDiscoveryClient()
+	if err != nil {
+		return err
+	}
+	o.DryRunVerifier = resource.NewDryRunVerifier(o.DynamicClient, discoveryClient)
 	o.FieldManager = GetApplyFieldManagerFlag(cmd, o.ServerSideApply)
 
 	if o.ForceConflicts && !o.ServerSideApply {

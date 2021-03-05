@@ -18,11 +18,11 @@ package testing
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"reflect"
 	"sync"
-	"testing"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -58,7 +58,6 @@ type FakeRuntime struct {
 	Err               error
 	InspectErr        error
 	StatusErr         error
-	T                 *testing.T
 }
 
 const FakeHost = "localhost:12345"
@@ -136,40 +135,39 @@ func (f *FakeRuntime) UpdatePodCIDR(c string) error {
 	return nil
 }
 
-func (f *FakeRuntime) assertList(expect []string, test []string) bool {
+func (f *FakeRuntime) assertList(expect []string, test []string) error {
 	if !reflect.DeepEqual(expect, test) {
-		f.T.Errorf("AssertList: expected %#v, got %#v", expect, test)
-		return false
+		return fmt.Errorf("expected %#v, got %#v", expect, test)
 	}
-	return true
+	return nil
 }
 
 // AssertCalls test if the invoked functions are as expected.
-func (f *FakeRuntime) AssertCalls(calls []string) bool {
+func (f *FakeRuntime) AssertCalls(calls []string) error {
 	f.Lock()
 	defer f.Unlock()
 	return f.assertList(calls, f.CalledFunctions)
 }
 
-func (f *FakeRuntime) AssertStartedPods(pods []string) bool {
+func (f *FakeRuntime) AssertStartedPods(pods []string) error {
 	f.Lock()
 	defer f.Unlock()
 	return f.assertList(pods, f.StartedPods)
 }
 
-func (f *FakeRuntime) AssertKilledPods(pods []string) bool {
+func (f *FakeRuntime) AssertKilledPods(pods []string) error {
 	f.Lock()
 	defer f.Unlock()
 	return f.assertList(pods, f.KilledPods)
 }
 
-func (f *FakeRuntime) AssertStartedContainers(containers []string) bool {
+func (f *FakeRuntime) AssertStartedContainers(containers []string) error {
 	f.Lock()
 	defer f.Unlock()
 	return f.assertList(containers, f.StartedContainers)
 }
 
-func (f *FakeRuntime) AssertKilledContainers(containers []string) bool {
+func (f *FakeRuntime) AssertKilledContainers(containers []string) error {
 	f.Lock()
 	defer f.Unlock()
 	return f.assertList(containers, f.KilledContainers)

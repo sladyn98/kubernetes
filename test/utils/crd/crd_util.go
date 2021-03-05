@@ -89,7 +89,12 @@ func CreateMultiVersionTestCRD(f *framework.Framework, group string, opts ...Opt
 			Served:  true,
 			Storage: true,
 			Name:    "v1",
-			Schema:  fixtures.AllowAllSchema(),
+			Schema: &apiextensionsv1.CustomResourceValidation{
+				OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+					XPreserveUnknownFields: pointer.BoolPtr(true),
+					Type:                   "object",
+				},
+			},
 		}}
 	}
 

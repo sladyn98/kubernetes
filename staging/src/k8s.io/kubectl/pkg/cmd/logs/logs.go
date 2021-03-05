@@ -375,11 +375,7 @@ func (o LogsOptions) sequentialConsumeRequest(requests map[corev1.ObjectReferenc
 	for objRef, request := range requests {
 		out := o.addPrefixIfNeeded(objRef, o.Out)
 		if err := o.ConsumeRequestFn(request, out); err != nil {
-			if !o.IgnoreLogErrors {
-				return err
-			}
-
-			fmt.Fprintf(o.Out, "error: %v\n", err)
+			return err
 		}
 	}
 

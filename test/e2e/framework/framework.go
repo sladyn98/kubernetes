@@ -213,6 +213,10 @@ func (f *Framework) BeforeEach() {
 		ExpectNoError(err)
 		f.DynamicClient, err = dynamic.NewForConfig(config)
 		ExpectNoError(err)
+		// node.k8s.io is based on CRD, which is served only as JSON
+		jsonConfig := config
+		jsonConfig.ContentType = "application/json"
+		ExpectNoError(err)
 
 		// create scales getter, set GroupVersion and NegotiatedSerializer to default values
 		// as they are required when creating a REST client.
@@ -623,6 +627,12 @@ func (kc *KubeConfig) FindCluster(name string) *KubeCluster {
 		}
 	}
 	return nil
+}
+
+// KubeDescribe is wrapper function for ginkgo describe.  Adds namespacing.
+// TODO: Support type safe tagging as well https://github.com/kubernetes/kubernetes/pull/22401.
+func KubeDescribe(text string, body func()) bool {
+	return ginkgo.Describe("[k8s.io] "+text, body)
 }
 
 // ConformanceIt is wrapper function for ginkgo It.  Adds "[Conformance]" tag and makes static analysis easier.

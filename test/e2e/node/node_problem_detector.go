@@ -40,12 +40,11 @@ import (
 )
 
 // This test checks if node-problem-detector (NPD) runs fine without error on
-// the up to 10 nodes in the cluster. NPD's functionality is tested in e2e_node tests.
-var _ = SIGDescribe("NodeProblemDetector", func() {
+// the nodes in the cluster. NPD's functionality is tested in e2e_node tests.
+var _ = SIGDescribe("NodeProblemDetector [DisabledForLargeClusters]", func() {
 	const (
-		pollInterval      = 1 * time.Second
-		pollTimeout       = 1 * time.Minute
-		maxNodesToProcess = 10
+		pollInterval = 1 * time.Second
+		pollTimeout  = 1 * time.Minute
 	)
 	f := framework.NewDefaultFramework("node-problem-detector")
 
@@ -61,34 +60,18 @@ var _ = SIGDescribe("NodeProblemDetector", func() {
 		e2eskipper.SkipUnlessSSHKeyPresent()
 
 		ginkgo.By("Getting all nodes and their SSH-able IP addresses")
-		readyNodes, err := e2enode.GetReadySchedulableNodes(f.ClientSet)
+		nodes, err := e2enode.GetReadySchedulableNodes(f.ClientSet)
 		framework.ExpectNoError(err)
-
-		nodes := []v1.Node{}
 		hosts := []string{}
-		for _, node := range readyNodes.Items {
-			host := ""
+		for _, node := range nodes.Items {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == v1.NodeExternalIP {
-					host = net.JoinHostPort(addr.Address, "22")
+					hosts = append(hosts, net.JoinHostPort(addr.Address, "22"))
 					break
 				}
 			}
-			// Not every node has to have an external IP address.
-			if len(host) > 0 {
-				nodes = append(nodes, node)
-				hosts = append(hosts, host)
-			}
 		}
-
-		if len(nodes) == 0 {
-			ginkgo.Skip("Skipping test due to lack of ready nodes with public IP")
-		}
-
-		if len(nodes) > maxNodesToProcess {
-			nodes = nodes[:maxNodesToProcess]
-			hosts = hosts[:maxNodesToProcess]
-		}
+		framework.ExpectEqual(len(hosts), len(nodes.Items))
 
 		isStandaloneMode := make(map[string]bool)
 		cpuUsageStats := make(map[string][]float64)
@@ -138,7 +121,7 @@ var _ = SIGDescribe("NodeProblemDetector", func() {
 		}
 
 		ginkgo.By("Check node-problem-detector can post conditions and events to API server")
-		for _, node := range nodes {
+		for _, node := range nodes.Items {
 			ginkgo.By(fmt.Sprintf("Check node-problem-detector posted KernelDeadlock condition on node %q", node.Name))
 			gomega.Eventually(func() error {
 				return verifyNodeCondition(f, "KernelDeadlock", v1.ConditionTrue, "AUFSUmountHung", node.Name)
@@ -173,7 +156,7 @@ var _ = SIGDescribe("NodeProblemDetector", func() {
 						uptimeStats[host] = append(uptimeStats[host], uptime)
 					}
 				} else {
-					cpuUsage, rss, workingSet := getNpdPodStat(f, nodes[j].Name)
+					cpuUsage, rss, workingSet := getNpdPodStat(f, nodes.Items[j].Name)
 					cpuUsageStats[host] = append(cpuUsageStats[host], cpuUsage)
 					rssStats[host] = append(rssStats[host], rss)
 					workingSetStats[host] = append(workingSetStats[host], workingSet)
@@ -191,19 +174,19 @@ var _ = SIGDescribe("NodeProblemDetector", func() {
 				// calculate its cpu usage from cgroup cpuacct value differences.
 				cpuUsage := cpuUsageStats[host][1] - cpuUsageStats[host][0]
 				totaltime := uptimeStats[host][1] - uptimeStats[host][0]
-				cpuStatsMsg += fmt.Sprintf(" %s[%.3f];", nodes[i].Name, cpuUsage/totaltime)
+				cpuStatsMsg += fmt.Sprintf(" %s[%.3f];", nodes.Items[i].Name, cpuUsage/totaltime)
 			} else {
 				sort.Float64s(cpuUsageStats[host])
-				cpuStatsMsg += fmt.Sprintf(" %s[%.3f|%.3f|%.3f];", nodes[i].Name,
+				cpuStatsMsg += fmt.Sprintf(" %s[%.3f|%.3f|%.3f];", nodes.Items[i].Name,
 					cpuUsageStats[host][0], cpuUsageStats[host][len(cpuUsageStats[host])/2], cpuUsageStats[host][len(cpuUsageStats[host])-1])
 			}
 
 			sort.Float64s(rssStats[host])
-			rssStatsMsg += fmt.Sprintf(" %s[%.1f|%.1f|%.1f];", nodes[i].Name,
+			rssStatsMsg += fmt.Sprintf(" %s[%.1f|%.1f|%.1f];", nodes.Items[i].Name,
 				rssStats[host][0], rssStats[host][len(rssStats[host])/2], rssStats[host][len(rssStats[host])-1])
 
 			sort.Float64s(workingSetStats[host])
-			workingSetStatsMsg += fmt.Sprintf(" %s[%.1f|%.1f|%.1f];", nodes[i].Name,
+			workingSetStatsMsg += fmt.Sprintf(" %s[%.1f|%.1f|%.1f];", nodes.Items[i].Name,
 				workingSetStats[host][0], workingSetStats[host][len(workingSetStats[host])/2], workingSetStats[host][len(workingSetStats[host])-1])
 		}
 		framework.Logf("Node-Problem-Detector CPU and Memory Stats:\n\t%s\n\t%s\n\t%s", cpuStatsMsg, rssStatsMsg, workingSetStatsMsg)

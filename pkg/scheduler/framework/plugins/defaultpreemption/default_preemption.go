@@ -93,9 +93,12 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state *framework.Cy
 		metrics.PreemptionAttempts.Inc()
 	}()
 
-	nnn, status := pl.preempt(ctx, state, pod, m)
-	if !status.IsSuccess() {
-		return nil, status
+	nnn, err := pl.preempt(ctx, state, pod, m)
+	if err != nil {
+		if _, ok := err.(*framework.FitError); ok {
+			return nil, framework.NewStatus(framework.Unschedulable, err.Error())
+		}
+		return nil, framework.AsStatus(err)
 	}
 	// This happens when the pod is not eligible for preemption or extenders filtered all candidates.
 	if nnn == "" {
@@ -114,8 +117,9 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state *framework.Cy
 // other pods with the same priority. The nominated pod prevents other pods from
 // using the nominated resources and the nominated pod could take a long time
 // before it is retried after many other pending pods.
-func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.CycleState, pod *v1.Pod, m framework.NodeToStatusMap) (string, *framework.Status) {
+func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.CycleState, pod *v1.Pod, m framework.NodeToStatusMap) (string, error) {
 	cs := pl.fh.ClientSet()
+	ph := pl.fh.PreemptHandle()
 	nodeLister := pl.fh.SnapshotSharedLister().NodeInfos()
 
 	// 0) Fetch the latest version of <pod>.
@@ -126,7 +130,7 @@ func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.Cycle
 	pod, err := pl.podLister.Pods(pod.Namespace).Get(pod.Name)
 	if err != nil {
 		klog.ErrorS(err, "getting the updated preemptor pod object", "pod", klog.KRef(podNamespace, podName))
-		return "", framework.AsStatus(err)
+		return "", err
 	}
 
 	// 1) Ensure the preemptor is eligible to preempt other pods.
@@ -136,28 +140,27 @@ func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.Cycle
 	}
 
 	// 2) Find all preemption candidates.
-	candidates, nodeToStatusMap, status := pl.FindCandidates(ctx, state, pod, m)
-	if !status.IsSuccess() {
-		return "", status
+	candidates, nodeToStautsMap, err := pl.FindCandidates(ctx, state, pod, m)
+	if err != nil {
+		return "", err
 	}
 
 	// Return a FitError only when there are no candidates that fit the pod.
 	if len(candidates) == 0 {
-		fitError := &framework.FitError{
+		return "", &framework.FitError{
 			Pod:         pod,
-			NumAllNodes: len(nodeToStatusMap),
+			NumAllNodes: len(nodeToStautsMap),
 			Diagnosis: framework.Diagnosis{
-				NodeToStatusMap: nodeToStatusMap,
+				NodeToStatusMap: nodeToStautsMap,
 				// Leave FailedPlugins as nil as it won't be used on moving Pods.
 			},
 		}
-		return "", framework.NewStatus(framework.Unschedulable, fitError.Error())
 	}
 
 	// 3) Interact with registered Extenders to filter out some candidates if needed.
-	candidates, status = CallExtenders(pl.fh.Extenders(), pod, nodeLister, candidates)
-	if !status.IsSuccess() {
-		return "", status
+	candidates, err = CallExtenders(ph.Extenders(), pod, nodeLister, candidates)
+	if err != nil {
+		return "", err
 	}
 
 	// 4) Find the best candidate.
@@ -167,8 +170,8 @@ func (pl *DefaultPreemption) preempt(ctx context.Context, state *framework.Cycle
 	}
 
 	// 5) Perform preparation work before nominating the selected candidate.
-	if status := PrepareCandidate(bestCandidate, pl.fh, cs, pod, pl.Name()); !status.IsSuccess() {
-		return "", status
+	if err := PrepareCandidate(bestCandidate, pl.fh, cs, pod, pl.Name()); err != nil {
+		return "", err
 	}
 
 	return bestCandidate.Name(), nil
@@ -197,13 +200,13 @@ func (pl *DefaultPreemption) getOffsetAndNumCandidates(numNodes int32) (int32, i
 
 // FindCandidates calculates a slice of preemption candidates.
 // Each candidate is executable to make the given <pod> schedulable.
-func (pl *DefaultPreemption) FindCandidates(ctx context.Context, state *framework.CycleState, pod *v1.Pod, m framework.NodeToStatusMap) ([]Candidate, framework.NodeToStatusMap, *framework.Status) {
+func (pl *DefaultPreemption) FindCandidates(ctx context.Context, state *framework.CycleState, pod *v1.Pod, m framework.NodeToStatusMap) ([]Candidate, framework.NodeToStatusMap, error) {
 	allNodes, err := pl.fh.SnapshotSharedLister().NodeInfos().List()
 	if err != nil {
-		return nil, nil, framework.AsStatus(err)
+		return nil, nil, err
 	}
 	if len(allNodes) == 0 {
-		return nil, nil, framework.NewStatus(framework.Error, "no nodes available")
+		return nil, nil, fmt.Errorf("no nodes available")
 	}
 	potentialNodes, unschedulableNodeStatus := nodesWherePreemptionMightHelp(allNodes, m)
 	if len(potentialNodes) == 0 {
@@ -218,7 +221,7 @@ func (pl *DefaultPreemption) FindCandidates(ctx context.Context, state *framewor
 
 	pdbs, err := getPodDisruptionBudgets(pl.pdbLister)
 	if err != nil {
-		return nil, nil, framework.AsStatus(err)
+		return nil, nil, err
 	}
 
 	offset, numCandidates := pl.getOffsetAndNumCandidates(int32(len(potentialNodes)))
@@ -369,7 +372,7 @@ func dryRunPreemption(ctx context.Context, fh framework.Handle,
 // Extenders which do not support preemption may later prevent preemptor from being scheduled on the nominated
 // node. In that case, scheduler will find a different host for the preemptor in subsequent scheduling cycles.
 func CallExtenders(extenders []framework.Extender, pod *v1.Pod, nodeLister framework.NodeInfoLister,
-	candidates []Candidate) ([]Candidate, *framework.Status) {
+	candidates []Candidate) ([]Candidate, error) {
 	if len(extenders) == 0 {
 		return candidates, nil
 	}
@@ -391,7 +394,7 @@ func CallExtenders(extenders []framework.Extender, pod *v1.Pod, nodeLister frame
 					"extender", extender, "err", err)
 				continue
 			}
-			return nil, framework.AsStatus(err)
+			return nil, err
 		}
 		// Replace victimsMap with new result after preemption. So the
 		// rest of extenders can continue use it as parameter.
@@ -605,11 +608,12 @@ func selectVictimsOnNode(
 	pdbs []*policy.PodDisruptionBudget,
 ) ([]*v1.Pod, int, *framework.Status) {
 	var potentialVictims []*framework.PodInfo
+	ph := fh.PreemptHandle()
 	removePod := func(rpi *framework.PodInfo) error {
 		if err := nodeInfo.RemovePod(rpi.Pod); err != nil {
 			return err
 		}
-		status := fh.RunPreFilterExtensionRemovePod(ctx, state, pod, rpi, nodeInfo)
+		status := ph.RunPreFilterExtensionRemovePod(ctx, state, pod, rpi, nodeInfo)
 		if !status.IsSuccess() {
 			return status.AsError()
 		}
@@ -617,7 +621,7 @@ func selectVictimsOnNode(
 	}
 	addPod := func(api *framework.PodInfo) error {
 		nodeInfo.AddPodInfo(api)
-		status := fh.RunPreFilterExtensionAddPod(ctx, state, pod, api, nodeInfo)
+		status := ph.RunPreFilterExtensionAddPod(ctx, state, pod, api, nodeInfo)
 		if !status.IsSuccess() {
 			return status.AsError()
 		}
@@ -669,7 +673,7 @@ func selectVictimsOnNode(
 			}
 			rpi := pi.Pod
 			victims = append(victims, rpi)
-			klog.V(5).InfoS("Pod is a potential preemption victim on node", "pod", klog.KObj(rpi), "node", klog.KObj(nodeInfo.Node()))
+			klog.V(5).InfoS("Pod is a potential preemption victim on node", "pod", klog.KObj(rpi), "node", nodeInfo.Node().Name)
 		}
 		return fits, nil
 	}
@@ -693,11 +697,11 @@ func selectVictimsOnNode(
 // - Evict the victim pods
 // - Reject the victim pods if they are in waitingPod map
 // - Clear the low-priority pods' nominatedNodeName status if needed
-func PrepareCandidate(c Candidate, fh framework.Handle, cs kubernetes.Interface, pod *v1.Pod, pluginName string) *framework.Status {
+func PrepareCandidate(c Candidate, fh framework.Handle, cs kubernetes.Interface, pod *v1.Pod, pluginName string) error {
 	for _, victim := range c.Victims().Pods {
 		if err := util.DeletePod(cs, victim); err != nil {
 			klog.ErrorS(err, "preempting pod", "pod", klog.KObj(victim))
-			return framework.AsStatus(err)
+			return err
 		}
 		// If the victim is a WaitingPod, send a reject message to the PermitPlugin
 		if waitingPod := fh.GetWaitingPod(victim.UID); waitingPod != nil {
@@ -712,7 +716,7 @@ func PrepareCandidate(c Candidate, fh framework.Handle, cs kubernetes.Interface,
 	// this node. So, we should remove their nomination. Removing their
 	// nomination updates these pods and moves them to the active queue. It
 	// lets scheduler find another place for them.
-	nominatedPods := getLowerPriorityNominatedPods(fh, pod, c.Name())
+	nominatedPods := getLowerPriorityNominatedPods(fh.PreemptHandle(), pod, c.Name())
 	if err := util.ClearNominatedNodeName(cs, nominatedPods...); err != nil {
 		klog.ErrorS(err, "cannot clear 'NominatedNodeName' field")
 		// We do not return as this error is not critical.
@@ -729,17 +733,17 @@ func PrepareCandidate(c Candidate, fh framework.Handle, cs kubernetes.Interface,
 // worth the complexity, especially because we generally expect to have a very
 // small number of nominated pods per node.
 func getLowerPriorityNominatedPods(pn framework.PodNominator, pod *v1.Pod, nodeName string) []*v1.Pod {
-	podInfos := pn.NominatedPodsForNode(nodeName)
+	pods := pn.NominatedPodsForNode(nodeName)
 
-	if len(podInfos) == 0 {
+	if len(pods) == 0 {
 		return nil
 	}
 
 	var lowerPriorityPods []*v1.Pod
 	podPriority := corev1helpers.PodPriority(pod)
-	for _, pi := range podInfos {
-		if corev1helpers.PodPriority(pi.Pod) < podPriority {
-			lowerPriorityPods = append(lowerPriorityPods, pi.Pod)
+	for _, p := range pods {
+		if corev1helpers.PodPriority(p) < podPriority {
+			lowerPriorityPods = append(lowerPriorityPods, p)
 		}
 	}
 	return lowerPriorityPods

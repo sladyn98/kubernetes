@@ -3362,11 +3362,6 @@ func (in *PodAffinityTerm) DeepCopyInto(out *PodAffinityTerm) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.NamespaceSelector != nil {
-		in, out := &in.NamespaceSelector, &out.NamespaceSelector
-		*out = new(v1.LabelSelector)
-		(*in).DeepCopyInto(*out)
-	}
 	return
 }
 
@@ -5328,11 +5323,6 @@ func (in *ServiceSpec) DeepCopyInto(out *ServiceSpec) {
 	if in.AllocateLoadBalancerNodePorts != nil {
 		in, out := &in.AllocateLoadBalancerNodePorts, &out.AllocateLoadBalancerNodePorts
 		*out = new(bool)
-		**out = **in
-	}
-	if in.LoadBalancerClass != nil {
-		in, out := &in.LoadBalancerClass, &out.LoadBalancerClass
-		*out = new(string)
 		**out = **in
 	}
 	return

@@ -28,21 +28,24 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apiserver/pkg/server"
-	"k8s.io/apiserver/pkg/server/healthz"
 	cacheddiscovery "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/metadata/metadatainformer"
 	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	cloudprovider "k8s.io/cloud-provider"
 	cloudcontrollerconfig "k8s.io/cloud-provider/app/config"
 	"k8s.io/cloud-provider/options"
+	"k8s.io/controller-manager/pkg/clientbuilder"
+	"k8s.io/controller-manager/pkg/informerfactory"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/server"
+	"k8s.io/apiserver/pkg/server/healthz"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/configz"
@@ -50,8 +53,6 @@ import (
 	"k8s.io/component-base/version"
 	"k8s.io/component-base/version/verflag"
 	genericcontrollermanager "k8s.io/controller-manager/app"
-	"k8s.io/controller-manager/pkg/clientbuilder"
-	"k8s.io/controller-manager/pkg/informerfactory"
 	"k8s.io/klog/v2"
 )
 
@@ -63,32 +64,21 @@ const (
 )
 
 // NewCloudControllerManagerCommand creates a *cobra.Command object with default parameters
-// initFuncConstructor is a map of named controller groups (you can start more than one in an init func) paired to their InitFuncConstructor.
-// additionalFlags provides controller specific flags to be included in the complete set of controller manager flags
-func NewCloudControllerManagerCommand(s *options.CloudControllerManagerOptions, cloudInitializer InitCloudFunc, initFuncConstructor map[string]InitFuncConstructor, additionalFlags cliflag.NamedFlagSets, stopCh <-chan struct{}) *cobra.Command {
+func NewCloudControllerManagerCommand(s *options.CloudControllerManagerOptions, c *cloudcontrollerconfig.Config, controllerInitializers map[string]InitFunc) *cobra.Command {
+
 	cmd := &cobra.Command{
 		Use: "cloud-controller-manager",
 		Long: `The Cloud controller manager is a daemon that embeds
 the cloud specific control loops shipped with Kubernetes.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
 			verflag.PrintAndExitIfRequested()
 			cliflag.PrintFlags(cmd.Flags())
 
-			c, err := s.Config(ControllerNames(initFuncConstructor), ControllersDisabledByDefault.List())
-			if err != nil {
+			if err := Run(c.Complete(), controllerInitializers, wait.NeverStop); err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
-				return err
+				os.Exit(1)
 			}
 
-			completedConfig := c.Complete()
-			cloud := cloudInitializer(completedConfig)
-			controllerInitializers := ConstructControllerInitializers(initFuncConstructor, completedConfig, cloud)
-
-			if err := Run(completedConfig, cloud, controllerInitializers, stopCh); err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				return err
-			}
-			return nil
 		},
 		Args: func(cmd *cobra.Command, args []string) error {
 			for _, arg := range args {
@@ -101,7 +91,7 @@ the cloud specific control loops shipped with Kubernetes.`,
 	}
 
 	fs := cmd.Flags()
-	namedFlagSets := s.Flags(ControllerNames(initFuncConstructor), ControllersDisabledByDefault.List())
+	namedFlagSets := s.Flags(KnownControllers(controllerInitializers), ControllersDisabledByDefault.List())
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 
@@ -116,10 +106,6 @@ the cloud specific control loops shipped with Kubernetes.`,
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
-	for _, f := range additionalFlags.FlagSets {
-		fs.AddFlagSet(f)
-	}
-
 	usageFmt := "Usage:\n  %s\n"
 	cols, _, _ := term.TerminalSize(cmd.OutOrStdout())
 	cmd.SetUsageFunc(func(cmd *cobra.Command) error {
@@ -136,7 +122,7 @@ the cloud specific control loops shipped with Kubernetes.`,
 }
 
 // Run runs the ExternalCMServer.  This should never exit.
-func Run(c *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface, controllerInitializers map[string]InitFunc, stopCh <-chan struct{}) error {
+func Run(c *cloudcontrollerconfig.CompletedConfig, controllerInitializers map[string]InitFunc, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
@@ -181,7 +167,7 @@ func Run(c *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface
 		if err != nil {
 			klog.Fatalf("error building controller context: %v", err)
 		}
-		if err := startControllers(cloud, controllerContext, c, ctx.Done(), controllerInitializers); err != nil {
+		if err := startControllers(controllerContext, c, ctx.Done(), controllerInitializers); err != nil {
 			klog.Fatalf("error running controllers: %v", err)
 		}
 	}
@@ -232,13 +218,7 @@ func Run(c *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface
 }
 
 // startControllers starts the cloud specific controller loops.
-func startControllers(cloud cloudprovider.Interface, ctx genericcontrollermanager.ControllerContext, c *cloudcontrollerconfig.CompletedConfig, stopCh <-chan struct{}, controllers map[string]InitFunc) error {
-	// Initialize the cloud provider with a reference to the clientBuilder
-	cloud.Initialize(c.ClientBuilder, stopCh)
-	// Set the informer on the user cloud object
-	if informerUserCloud, ok := cloud.(cloudprovider.InformerUser); ok {
-		informerUserCloud.SetInformers(c.SharedInformers)
-	}
+func startControllers(ctx genericcontrollermanager.ControllerContext, c *cloudcontrollerconfig.CompletedConfig, stopCh <-chan struct{}, controllers map[string]InitFunc) error {
 	for controllerName, initFn := range controllers {
 		if !genericcontrollermanager.IsControllerEnabled(controllerName, ControllersDisabledByDefault, c.ComponentConfig.Generic.Controllers) {
 			klog.Warningf("%q is disabled", controllerName)
@@ -271,70 +251,57 @@ func startControllers(cloud cloudprovider.Interface, ctx genericcontrollermanage
 	select {}
 }
 
-// InitCloudFunc is used to initialize cloud
-type InitCloudFunc func(config *cloudcontrollerconfig.CompletedConfig) cloudprovider.Interface
-
 // InitFunc is used to launch a particular controller.  It may run additional "should I activate checks".
 // Any error returned will cause the controller process to `Fatal`
 // The bool indicates whether the controller was enabled.
 type InitFunc func(ctx genericcontrollermanager.ControllerContext) (debuggingHandler http.Handler, enabled bool, err error)
 
-// InitFuncConstructor is used to construct InitFunc
-type InitFuncConstructor func(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) InitFunc
-
-// ControllerNames indicate the default controller we are known.
-func ControllerNames(initFuncConstructors map[string]InitFuncConstructor) []string {
-	ret := sets.StringKeySet(initFuncConstructors)
+// KnownControllers indicate the default controller we are known.
+func KnownControllers(controllerInitializers map[string]InitFunc) []string {
+	ret := sets.StringKeySet(controllerInitializers)
 	return ret.List()
 }
 
 // ControllersDisabledByDefault is the controller disabled default when starting cloud-controller managers.
 var ControllersDisabledByDefault = sets.NewString()
 
-// ConstructControllerInitializers is a private map of named controller groups (you can start more than one in an init func)
+// DefaultControllerInitializers is a private map of named controller groups (you can start more than one in an init func)
 // paired to their InitFunc.  This allows for structured downstream composition and subdivision.
-func ConstructControllerInitializers(initFuncConstructors map[string]InitFuncConstructor, completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) map[string]InitFunc {
+func DefaultControllerInitializers(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) map[string]InitFunc {
 	controllers := map[string]InitFunc{}
-	for name, constructor := range initFuncConstructors {
-		controllers[name] = constructor(completedConfig, cloud)
-	}
+	controllers["cloud-node"] = StartCloudNodeControllerWrapper(completedConfig, cloud)
+	controllers["cloud-node-lifecycle"] = startCloudNodeLifecycleControllerWrapper(completedConfig, cloud)
+	controllers["service"] = startServiceControllerWrapper(completedConfig, cloud)
+	controllers["route"] = startRouteControllerWrapper(completedConfig, cloud)
 	return controllers
 }
 
 // StartCloudNodeControllerWrapper is used to take cloud cofig as input and start cloud node controller
-func StartCloudNodeControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) InitFunc {
+func StartCloudNodeControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 		return startCloudNodeController(completedConfig, cloud, ctx.Stop)
 	}
 }
 
 // startCloudNodeLifecycleControllerWrapper is used to take cloud cofig as input and start cloud node lifecycle controller
-func startCloudNodeLifecycleControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) InitFunc {
+func startCloudNodeLifecycleControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 		return startCloudNodeLifecycleController(completedConfig, cloud, ctx.Stop)
 	}
 }
 
 // startServiceControllerWrapper is used to take cloud cofig as input and start service controller
-func startServiceControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) InitFunc {
+func startServiceControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 		return startServiceController(completedConfig, cloud, ctx.Stop)
 	}
 }
 
 // startRouteControllerWrapper is used to take cloud cofig as input and start route controller
-func startRouteControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) InitFunc {
+func startRouteControllerWrapper(completedConfig *cloudcontrollerconfig.CompletedConfig, cloud cloudprovider.Interface) func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 	return func(ctx genericcontrollermanager.ControllerContext) (http.Handler, bool, error) {
 		return startRouteController(completedConfig, cloud, ctx.Stop)
 	}
-}
-
-// DefaultInitFuncConstructors is a map of default named controller groups paired with InitFuncConstructor
-var DefaultInitFuncConstructors = map[string]InitFuncConstructor{
-	"cloud-node":           StartCloudNodeControllerWrapper,
-	"cloud-node-lifecycle": startCloudNodeLifecycleControllerWrapper,
-	"service":              startServiceControllerWrapper,
-	"route":                startRouteControllerWrapper,
 }
 
 // CreateControllerContext creates a context struct containing references to resources needed by the

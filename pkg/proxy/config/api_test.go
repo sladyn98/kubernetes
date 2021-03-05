@@ -152,9 +152,8 @@ func newSvcHandler(t *testing.T, svcs []*v1.Service, done func()) ServiceHandler
 	shm := &ServiceHandlerMock{
 		state: make(map[types.NamespacedName]*v1.Service),
 	}
-	var callDoneOnce sync.Once
 	shm.process = func(services []*v1.Service) {
-		defer callDoneOnce.Do(done)
+		defer done()
 		if !reflect.DeepEqual(services, svcs) {
 			t.Errorf("Unexpected services: %#v, expected: %#v", services, svcs)
 		}
@@ -166,9 +165,8 @@ func newEpsHandler(t *testing.T, eps []*v1.Endpoints, done func()) EndpointsHand
 	ehm := &EndpointsHandlerMock{
 		state: make(map[types.NamespacedName]*v1.Endpoints),
 	}
-	var callDoneOnce sync.Once
 	ehm.process = func(endpoints []*v1.Endpoints) {
-		defer callDoneOnce.Do(done)
+		defer done()
 		if !reflect.DeepEqual(eps, endpoints) {
 			t.Errorf("Unexpected endpoints: %#v, expected: %#v", endpoints, eps)
 		}

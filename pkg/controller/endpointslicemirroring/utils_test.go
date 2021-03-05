@@ -27,8 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/rand"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/kubernetes/pkg/features"
 	utilpointer "k8s.io/utils/pointer"
 )
 
@@ -78,39 +81,83 @@ func TestNewEndpointSlice(t *testing.T) {
 }
 
 func TestAddressToEndpoint(t *testing.T) {
-	//name: "simple + gate enabled",
-	epAddress := v1.EndpointAddress{
-		IP:       "10.1.2.3",
-		Hostname: "foo",
-		NodeName: utilpointer.StringPtr("node-abc"),
-		TargetRef: &v1.ObjectReference{
-			APIVersion: "v1",
-			Kind:       "Pod",
-			Namespace:  "default",
-			Name:       "foo",
+	testCases := []struct {
+		name                string
+		epAddress           v1.EndpointAddress
+		expectedEndpoint    discovery.Endpoint
+		ready               bool
+		nodeNameGateEnabled bool
+	}{{
+		name: "simple + gate enabled",
+		epAddress: v1.EndpointAddress{
+			IP:       "10.1.2.3",
+			Hostname: "foo",
+			NodeName: utilpointer.StringPtr("node-abc"),
+			TargetRef: &v1.ObjectReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Namespace:  "default",
+				Name:       "foo",
+			},
 		},
-	}
-	ready := true
-	expectedEndpoint := discovery.Endpoint{
-		Addresses: []string{"10.1.2.3"},
-		Hostname:  utilpointer.StringPtr("foo"),
-		Conditions: discovery.EndpointConditions{
-			Ready: utilpointer.BoolPtr(true),
+		ready:               true,
+		nodeNameGateEnabled: true,
+		expectedEndpoint: discovery.Endpoint{
+			Addresses: []string{"10.1.2.3"},
+			Hostname:  utilpointer.StringPtr("foo"),
+			Conditions: discovery.EndpointConditions{
+				Ready: utilpointer.BoolPtr(true),
+			},
+			Topology: map[string]string{
+				"kubernetes.io/hostname": "node-abc",
+			},
+			TargetRef: &v1.ObjectReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Namespace:  "default",
+				Name:       "foo",
+			},
+			NodeName: utilpointer.StringPtr("node-abc"),
 		},
-		Topology: map[string]string{
-			"kubernetes.io/hostname": "node-abc",
+	}, {
+		name: "simple + gate disabled",
+		epAddress: v1.EndpointAddress{
+			IP:       "10.1.2.3",
+			Hostname: "foo",
+			NodeName: utilpointer.StringPtr("node-abc"),
+			TargetRef: &v1.ObjectReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Namespace:  "default",
+				Name:       "foo",
+			},
 		},
-		TargetRef: &v1.ObjectReference{
-			APIVersion: "v1",
-			Kind:       "Pod",
-			Namespace:  "default",
-			Name:       "foo",
+		ready:               true,
+		nodeNameGateEnabled: false,
+		expectedEndpoint: discovery.Endpoint{
+			Addresses: []string{"10.1.2.3"},
+			Hostname:  utilpointer.StringPtr("foo"),
+			Conditions: discovery.EndpointConditions{
+				Ready: utilpointer.BoolPtr(true),
+			},
+			Topology: map[string]string{
+				"kubernetes.io/hostname": "node-abc",
+			},
+			TargetRef: &v1.ObjectReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Namespace:  "default",
+				Name:       "foo",
+			},
 		},
-		NodeName: utilpointer.StringPtr("node-abc"),
-	}
+	}}
 
-	ep := addressToEndpoint(epAddress, ready)
-	assert.EqualValues(t, expectedEndpoint, *ep)
+	for _, tc := range testCases {
+		defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EndpointSliceNodeName, tc.nodeNameGateEnabled)()
+
+		ep := addressToEndpoint(tc.epAddress, tc.ready)
+		assert.EqualValues(t, tc.expectedEndpoint, *ep)
+	}
 }
 
 // Test helpers
@@ -125,13 +172,13 @@ func newClientset() *fake.Clientset {
 			endpointSlice.ObjectMeta.Name = fmt.Sprintf("%s-%s", endpointSlice.ObjectMeta.GenerateName, rand.String(8))
 			endpointSlice.ObjectMeta.GenerateName = ""
 		}
-		endpointSlice.ObjectMeta.Generation = 1
+		endpointSlice.ObjectMeta.ResourceVersion = "100"
 
 		return false, endpointSlice, nil
 	}))
 	client.PrependReactor("update", "endpointslices", k8stesting.ReactionFunc(func(action k8stesting.Action) (bool, runtime.Object, error) {
 		endpointSlice := action.(k8stesting.CreateAction).GetObject().(*discovery.EndpointSlice)
-		endpointSlice.ObjectMeta.Generation++
+		endpointSlice.ObjectMeta.ResourceVersion = "200"
 		return false, endpointSlice, nil
 	}))
 

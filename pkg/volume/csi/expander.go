@@ -17,6 +17,7 @@ limitations under the License.
 package csi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -70,7 +71,7 @@ func (c *csiPlugin) nodeExpandWithClient(
 	fsVolume bool) (bool, error) {
 	driverName := csiSource.Driver
 
-	ctx, cancel := createCSIOperationContext(resizeOptions.VolumeSpec, csiTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), csiTimeout)
 	defer cancel()
 
 	nodeExpandSet, err := csClient.NodeSupportsNodeExpand(ctx)

@@ -22,8 +22,7 @@ import (
 	"testing"
 	"time"
 
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
-
+	admissionv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -64,22 +63,19 @@ func TestWebhookLoopback(t *testing.T) {
 		},
 	})
 
-	fail := admissionregistrationv1.Fail
-	noSideEffects := admissionregistrationv1.SideEffectClassNone
-	_, err := client.AdmissionregistrationV1().MutatingWebhookConfigurations().Create(context.TODO(), &admissionregistrationv1.MutatingWebhookConfiguration{
+	fail := admissionv1beta1.Fail
+	_, err := client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Create(context.TODO(), &admissionv1beta1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "webhooktest.example.com"},
-		Webhooks: []admissionregistrationv1.MutatingWebhook{{
+		Webhooks: []admissionv1beta1.MutatingWebhook{{
 			Name: "webhooktest.example.com",
-			ClientConfig: admissionregistrationv1.WebhookClientConfig{
-				Service: &admissionregistrationv1.ServiceReference{Namespace: "default", Name: "kubernetes", Path: &webhookPath},
+			ClientConfig: admissionv1beta1.WebhookClientConfig{
+				Service: &admissionv1beta1.ServiceReference{Namespace: "default", Name: "kubernetes", Path: &webhookPath},
 			},
-			Rules: []admissionregistrationv1.RuleWithOperations{{
-				Operations: []admissionregistrationv1.OperationType{admissionregistrationv1.OperationAll},
-				Rule:       admissionregistrationv1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"configmaps"}},
+			Rules: []admissionv1beta1.RuleWithOperations{{
+				Operations: []admissionv1beta1.OperationType{admissionv1beta1.OperationAll},
+				Rule:       admissionv1beta1.Rule{APIGroups: []string{""}, APIVersions: []string{"v1"}, Resources: []string{"configmaps"}},
 			}},
-			FailurePolicy:           &fail,
-			SideEffects:             &noSideEffects,
-			AdmissionReviewVersions: []string{"v1"},
+			FailurePolicy: &fail,
 		}},
 	}, metav1.CreateOptions{})
 	if err != nil {

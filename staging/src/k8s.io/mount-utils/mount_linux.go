@@ -441,10 +441,11 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 	return nil
 }
 
-func getDiskFormat(exec utilexec.Interface, disk string) (string, error) {
+// GetDiskFormat uses 'blkid' to see if the given disk is unformatted
+func (mounter *SafeFormatAndMount) GetDiskFormat(disk string) (string, error) {
 	args := []string{"-p", "-s", "TYPE", "-s", "PTTYPE", "-o", "export", disk}
 	klog.V(4).Infof("Attempting to determine if disk %q is formatted using blkid with args: (%v)", disk, args)
-	dataOut, err := exec.Command("blkid", args...).CombinedOutput()
+	dataOut, err := mounter.Exec.Command("blkid", args...).CombinedOutput()
 	output := string(dataOut)
 	klog.V(4).Infof("Output: %q", output)
 
@@ -491,11 +492,6 @@ func getDiskFormat(exec utilexec.Interface, disk string) (string, error) {
 	}
 
 	return fstype, nil
-}
-
-// GetDiskFormat uses 'blkid' to see if the given disk is unformatted
-func (mounter *SafeFormatAndMount) GetDiskFormat(disk string) (string, error) {
-	return getDiskFormat(mounter.Exec, disk)
 }
 
 // ListProcMounts is shared with NsEnterMounter

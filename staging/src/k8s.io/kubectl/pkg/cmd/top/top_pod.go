@@ -183,9 +183,9 @@ func (o TopPodOptions) RunTopPod() error {
 	if len(metrics.Items) == 0 {
 		// If the API server query is successful but all the pods are newly created,
 		// the metrics are probably not ready yet, so we return the error here in the first place.
-		err := verifyEmptyMetrics(o, selector)
-		if err != nil {
-			return err
+		e := verifyEmptyMetrics(o, selector)
+		if e != nil {
+			return e
 		}
 
 		// if we had no errors, be sure we output something.
@@ -194,6 +194,9 @@ func (o TopPodOptions) RunTopPod() error {
 		} else {
 			fmt.Fprintf(o.ErrOut, "No resources found in %s namespace.\n", o.Namespace)
 		}
+	}
+	if err != nil {
+		return err
 	}
 
 	return o.Printer.PrintPodMetrics(metrics.Items, o.PrintContainers, o.AllNamespaces, o.NoHeaders, o.SortBy)
@@ -258,6 +261,7 @@ func checkPodAge(pod *v1.Pod) error {
 	age := time.Since(pod.CreationTimestamp.Time)
 	if age > metricsCreationDelay {
 		message := fmt.Sprintf("Metrics not available for pod %s/%s, age: %s", pod.Namespace, pod.Name, age.String())
+		klog.Warningf(message)
 		return errors.New(message)
 	} else {
 		klog.V(2).Infof("Metrics not yet available for pod %s/%s, age: %s", pod.Namespace, pod.Name, age.String())

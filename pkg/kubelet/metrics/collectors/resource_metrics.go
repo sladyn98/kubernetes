@@ -115,7 +115,7 @@ func (rc *resourceMetricsCollector) CollectWithStability(ch chan<- metrics.Metri
 	statsSummary, err := rc.provider.GetCPUAndMemoryStats()
 	if err != nil {
 		errorCount = 1
-		klog.ErrorS(err, "Error getting summary for resourceMetric prometheus endpoint")
+		klog.Warningf("Error getting summary for resourceMetric prometheus endpoint: %v", err)
 		return
 	}
 

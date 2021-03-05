@@ -134,7 +134,15 @@ func newProxyServer(
 	}
 
 	nodeIP := detectNodeIP(client, hostname, config.BindAddress)
-	klog.Infof("Detected node IP %s", nodeIP.String())
+	protocol := utiliptables.ProtocolIPv4
+	if utilsnet.IsIPv6(nodeIP) {
+		klog.V(0).Infof("kube-proxy node IP is an IPv6 address (%s), assume IPv6 operation", nodeIP.String())
+		protocol = utiliptables.ProtocolIPv6
+	} else {
+		klog.V(0).Infof("kube-proxy node IP is an IPv4 address (%s), assume IPv4 operation", nodeIP.String())
+	}
+
+	iptInterface = utiliptables.New(execer, protocol)
 
 	// Create event recorder
 	eventBroadcaster := record.NewBroadcaster()
@@ -173,38 +181,6 @@ func newProxyServer(
 
 	klog.V(2).Info("DetectLocalMode: '", string(detectLocalMode), "'")
 
-	primaryProtocol := utiliptables.ProtocolIPv4
-	if utilsnet.IsIPv6(nodeIP) {
-		primaryProtocol = utiliptables.ProtocolIPv6
-	}
-	iptInterface = utiliptables.New(execer, primaryProtocol)
-
-	var ipt [2]utiliptables.Interface
-	dualStack := utilfeature.DefaultFeatureGate.Enabled(features.IPv6DualStack) && proxyMode != proxyModeUserspace
-	if dualStack {
-		// Create iptables handlers for both families, one is already created
-		// Always ordered as IPv4, IPv6
-		if primaryProtocol == utiliptables.ProtocolIPv4 {
-			ipt[0] = iptInterface
-			ipt[1] = utiliptables.New(execer, utiliptables.ProtocolIPv6)
-
-			// Just because the feature gate is enabled doesn't mean the node
-			// actually supports dual-stack
-			if _, err := ipt[1].ChainExists(utiliptables.TableNAT, utiliptables.ChainPostrouting); err != nil {
-				klog.Warningf("No iptables support for IPv6: %v", err)
-				dualStack = false
-			}
-		} else {
-			ipt[0] = utiliptables.New(execer, utiliptables.ProtocolIPv4)
-			ipt[1] = iptInterface
-		}
-	}
-	if dualStack {
-		klog.V(0).Infof("kube-proxy running in dual-stack mode, %s-primary", iptInterface.Protocol())
-	} else {
-		klog.V(0).Infof("kube-proxy running in single-stack %s mode", iptInterface.Protocol())
-	}
-
 	if proxyMode == proxyModeIPTables {
 		klog.V(0).Info("Using iptables Proxier.")
 		if config.IPTables.MasqueradeBit == nil {
@@ -212,8 +188,19 @@ func newProxyServer(
 			return nil, fmt.Errorf("unable to read IPTables MasqueradeBit from config")
 		}
 
-		if dualStack {
+		if utilfeature.DefaultFeatureGate.Enabled(features.IPv6DualStack) {
 			klog.V(0).Info("creating dualStackProxier for iptables.")
+
+			// Create iptables handlers for both families, one is already created
+			// Always ordered as IPv4, IPv6
+			var ipt [2]utiliptables.Interface
+			if iptInterface.IsIPv6() {
+				ipt[1] = iptInterface
+				ipt[0] = utiliptables.New(execer, utiliptables.ProtocolIPv4)
+			} else {
+				ipt[0] = iptInterface
+				ipt[1] = utiliptables.New(execer, utiliptables.ProtocolIPv6)
+			}
 
 			// Always ordered to match []ipt
 			var localDetectors [2]proxyutiliptables.LocalTrafficDetector
@@ -269,8 +256,19 @@ func newProxyServer(
 		proxymetrics.RegisterMetrics()
 	} else if proxyMode == proxyModeIPVS {
 		klog.V(0).Info("Using ipvs Proxier.")
-		if dualStack {
+		if utilfeature.DefaultFeatureGate.Enabled(features.IPv6DualStack) {
 			klog.V(0).Info("creating dualStackProxier for ipvs.")
+
+			// Create iptables handlers for both families, one is already created
+			// Always ordered as IPv4, IPv6
+			var ipt [2]utiliptables.Interface
+			if iptInterface.IsIPv6() {
+				ipt[1] = iptInterface
+				ipt[0] = utiliptables.New(execer, utiliptables.ProtocolIPv4)
+			} else {
+				ipt[0] = iptInterface
+				ipt[1] = utiliptables.New(execer, utiliptables.ProtocolIPv6)
+			}
 
 			nodeIPs := nodeIPTuple(config.BindAddress)
 

@@ -252,6 +252,7 @@ func TestPodToEndpoint(t *testing.T) {
 		expectedEndpoint         discovery.Endpoint
 		publishNotReadyAddresses bool
 		terminatingGateEnabled   bool
+		nodeNameGateEnabled      bool
 	}{
 		{
 			name: "Ready pod",
@@ -261,7 +262,6 @@ func TestPodToEndpoint(t *testing.T) {
 				Addresses:  []string{"1.2.3.5"},
 				Conditions: discovery.EndpointConditions{Ready: utilpointer.BoolPtr(true)},
 				Topology:   map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName:   utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -279,7 +279,6 @@ func TestPodToEndpoint(t *testing.T) {
 				Addresses:  []string{"1.2.3.5"},
 				Conditions: discovery.EndpointConditions{Ready: utilpointer.BoolPtr(true)},
 				Topology:   map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName:   utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -297,7 +296,6 @@ func TestPodToEndpoint(t *testing.T) {
 				Addresses:  []string{"1.2.3.5"},
 				Conditions: discovery.EndpointConditions{Ready: utilpointer.BoolPtr(false)},
 				Topology:   map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName:   utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -311,6 +309,24 @@ func TestPodToEndpoint(t *testing.T) {
 			name: "Unready pod + publishNotReadyAddresses",
 			pod:  unreadyPod,
 			svc:  &svcPublishNotReady,
+			expectedEndpoint: discovery.Endpoint{
+				Addresses:  []string{"1.2.3.5"},
+				Conditions: discovery.EndpointConditions{Ready: utilpointer.BoolPtr(true)},
+				Topology:   map[string]string{"kubernetes.io/hostname": "node-1"},
+				TargetRef: &v1.ObjectReference{
+					Kind:            "Pod",
+					Namespace:       ns,
+					Name:            readyPod.Name,
+					UID:             readyPod.UID,
+					ResourceVersion: readyPod.ResourceVersion,
+				},
+			},
+		},
+		{
+			name:                "Ready pod + node name gate enabled",
+			pod:                 readyPod,
+			svc:                 &svc,
+			nodeNameGateEnabled: true,
 			expectedEndpoint: discovery.Endpoint{
 				Addresses:  []string{"1.2.3.5"},
 				Conditions: discovery.EndpointConditions{Ready: utilpointer.BoolPtr(true)},
@@ -338,7 +354,6 @@ func TestPodToEndpoint(t *testing.T) {
 					"topology.kubernetes.io/zone":   "us-central1-a",
 					"topology.kubernetes.io/region": "us-central1",
 				},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -361,7 +376,6 @@ func TestPodToEndpoint(t *testing.T) {
 					"topology.kubernetes.io/zone":   "us-central1-a",
 					"topology.kubernetes.io/region": "us-central1",
 				},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -385,7 +399,6 @@ func TestPodToEndpoint(t *testing.T) {
 					"topology.kubernetes.io/zone":   "us-central1-a",
 					"topology.kubernetes.io/region": "us-central1",
 				},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -407,7 +420,6 @@ func TestPodToEndpoint(t *testing.T) {
 					Terminating: utilpointer.BoolPtr(false),
 				},
 				Topology: map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -428,7 +440,6 @@ func TestPodToEndpoint(t *testing.T) {
 					Ready: utilpointer.BoolPtr(false),
 				},
 				Topology: map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -451,7 +462,6 @@ func TestPodToEndpoint(t *testing.T) {
 					Terminating: utilpointer.BoolPtr(true),
 				},
 				Topology: map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -472,7 +482,6 @@ func TestPodToEndpoint(t *testing.T) {
 					Ready: utilpointer.BoolPtr(false),
 				},
 				Topology: map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -495,7 +504,6 @@ func TestPodToEndpoint(t *testing.T) {
 					Terminating: utilpointer.BoolPtr(true),
 				},
 				Topology: map[string]string{"kubernetes.io/hostname": "node-1"},
-				NodeName: utilpointer.StringPtr("node-1"),
 				TargetRef: &v1.ObjectReference{
 					Kind:            "Pod",
 					Namespace:       ns,
@@ -511,6 +519,7 @@ func TestPodToEndpoint(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EndpointSliceTerminatingCondition, testCase.terminatingGateEnabled)()
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EndpointSliceNodeName, testCase.nodeNameGateEnabled)()
 
 			endpoint := podToEndpoint(testCase.pod, testCase.node, testCase.svc, discovery.AddressTypeIPv4)
 			if !reflect.DeepEqual(testCase.expectedEndpoint, endpoint) {
@@ -992,13 +1001,13 @@ func newClientset() *fake.Clientset {
 			endpointSlice.ObjectMeta.Name = fmt.Sprintf("%s-%s", endpointSlice.ObjectMeta.GenerateName, rand.String(8))
 			endpointSlice.ObjectMeta.GenerateName = ""
 		}
-		endpointSlice.Generation = 1
+		endpointSlice.ObjectMeta.ResourceVersion = "100"
 
 		return false, endpointSlice, nil
 	}))
 	client.PrependReactor("update", "endpointslices", k8stesting.ReactionFunc(func(action k8stesting.Action) (bool, runtime.Object, error) {
 		endpointSlice := action.(k8stesting.CreateAction).GetObject().(*discovery.EndpointSlice)
-		endpointSlice.Generation++
+		endpointSlice.ObjectMeta.ResourceVersion = "200"
 		return false, endpointSlice, nil
 	}))
 

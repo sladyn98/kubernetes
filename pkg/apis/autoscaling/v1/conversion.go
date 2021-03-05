@@ -362,7 +362,6 @@ func Convert_autoscaling_HorizontalPodAutoscaler_To_v1_HorizontalPodAutoscaler(i
 		}
 		// copy before mutating
 		if !copiedAnnotations {
-			//nolint:ineffassign
 			copiedAnnotations = true
 			out.Annotations = autoscaling.DeepCopyStringMap(out.Annotations)
 		}

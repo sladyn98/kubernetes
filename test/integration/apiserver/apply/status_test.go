@@ -62,6 +62,12 @@ var statusData = map[schema.GroupVersionResource]string{
 
 const statusDefault = `{"status": {"conditions": [{"type": "MyStatus", "status":"True"}]}}`
 
+// Some status-only APIs have empty object on creation. Therefore we don't expect create_test
+// managedFields for these APIs
+var ignoreCreateManagementList = map[schema.GroupVersionResource]struct{}{
+	gvr("internal.apiserver.k8s.io", "v1alpha1", "storageversions"): {},
+}
+
 func gvr(g, v, r string) schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: g, Version: v, Resource: r}
 }
@@ -199,7 +205,11 @@ func TestApplyStatus(t *testing.T) {
 					t.Fatalf("Couldn't find apply_status_test: %v", managedFields)
 				}
 				if !findManager(managedFields, "create_test") {
-					t.Fatalf("Couldn't find create_test: %v", managedFields)
+					if _, ok := ignoreCreateManagementList[mapping.Resource]; !ok {
+						t.Fatalf("Couldn't find create_test: %v", managedFields)
+					}
+				} else if _, ok := ignoreCreateManagementList[mapping.Resource]; ok {
+					t.Fatalf("found create_test in ignoreCreateManagementList resource: %v", managedFields)
 				}
 
 				if err := rsc.Delete(context.TODO(), name, *metav1.NewDeleteOptions(0)); err != nil {

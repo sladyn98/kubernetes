@@ -40,7 +40,7 @@ import (
 	"github.com/onsi/gomega"
 )
 
-var _ = SIGDescribe("MirrorPod", func() {
+var _ = framework.KubeDescribe("MirrorPod", func() {
 	f := framework.NewDefaultFramework("mirror-pod")
 	ginkgo.Context("when create a mirror pod ", func() {
 		var ns, podPath, staticPodName, mirrorPodName string

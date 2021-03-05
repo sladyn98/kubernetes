@@ -122,7 +122,12 @@ func WithPriorityAndFairness(
 			served = true
 			innerCtx := context.WithValue(ctx, priorityAndFairnessKey, classification)
 			innerReq := r.Clone(innerCtx)
-			setResponseHeaders(classification, w)
+
+			// We intentionally set the UID of the flow-schema and priority-level instead of name. This is so that
+			// the names that cluster-admins choose for categorization and priority levels are not exposed, also
+			// the names might make it obvious to the users that they are rejected due to classification with low priority.
+			w.Header().Set(flowcontrol.ResponseHeaderMatchedPriorityLevelConfigurationUID, string(classification.PriorityLevelUID))
+			w.Header().Set(flowcontrol.ResponseHeaderMatchedFlowSchemaUID, string(classification.FlowSchemaUID))
 
 			handler.ServeHTTP(w, innerReq)
 		}
@@ -135,8 +140,6 @@ func WithPriorityAndFairness(
 			}
 		}, execute)
 		if !served {
-			setResponseHeaders(classification, w)
-
 			if isMutatingRequest {
 				epmetrics.DroppedRequests.WithContext(ctx).WithLabelValues(epmetrics.MutatingKind).Inc()
 			} else {
@@ -154,16 +157,4 @@ func WithPriorityAndFairness(
 func StartPriorityAndFairnessWatermarkMaintenance(stopCh <-chan struct{}) {
 	startWatermarkMaintenance(watermark, stopCh)
 	startWatermarkMaintenance(waitingMark, stopCh)
-}
-
-func setResponseHeaders(classification *PriorityAndFairnessClassification, w http.ResponseWriter) {
-	if classification == nil {
-		return
-	}
-
-	// We intentionally set the UID of the flow-schema and priority-level instead of name. This is so that
-	// the names that cluster-admins choose for categorization and priority levels are not exposed, also
-	// the names might make it obvious to the users that they are rejected due to classification with low priority.
-	w.Header().Set(flowcontrol.ResponseHeaderMatchedPriorityLevelConfigurationUID, string(classification.PriorityLevelUID))
-	w.Header().Set(flowcontrol.ResponseHeaderMatchedFlowSchemaUID, string(classification.FlowSchemaUID))
 }

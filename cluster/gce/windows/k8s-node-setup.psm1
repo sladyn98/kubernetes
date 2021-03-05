@@ -317,7 +317,6 @@ function Set-PrerequisiteOptions {
   Log-Output "Disabling Windows Update service"
   & sc.exe config wuauserv start=disabled
   & sc.exe stop wuauserv
-  Write-VerboseServiceInfoToConsole -Service 'wuauserv' -Delay 1
 
   # Use TLS 1.2: needed for Invoke-WebRequest downloads from github.com.
   [Net.ServicePointManager]::SecurityProtocol = `
@@ -444,7 +443,6 @@ function Start-CSIProxy {
     & sc.exe failure csiproxy reset= 0 actions= restart/10000
     Log-Output "Starting CSI Proxy Service"
     & sc.exe start csiproxy
-    Write-VerboseServiceInfoToConsole -Service 'csiproxy' -Delay 1
   }
 }
 
@@ -1234,7 +1232,6 @@ function Start-WorkerServices {
 
   Log-Output "Waiting 10 seconds for kubelet to stabilize"
   Start-Sleep 10
-  Write-VerboseServiceInfoToConsole -Service 'kubelet'
 
   if (Get-Process | Where-Object Name -eq "kube-proxy") {
     Log-Output -Fatal `
@@ -1245,7 +1242,6 @@ function Start-WorkerServices {
   & sc.exe failure kube-proxy reset= 0 actions= restart/10000
   Log-Output "Starting kube-proxy service"
   & sc.exe start kube-proxy
-  Write-VerboseServiceInfoToConsole -Service 'kube-proxy' -Delay 1
 
   # F1020 23:08:52.000083    9136 server.go:361] unable to load in-cluster
   # configuration, KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT must be
@@ -1758,15 +1754,15 @@ function DownloadAndInstall-LoggingAgents {
 function Create-LoggingAgentServices {
   cd $LOGGINGAGENT_ROOT
 
-  Log-Output "Creating service: ${LOGGINGAGENT_SERVICE}"
+  Log-Output 'Creating service: ${LOGGINGAGENT_SERVICE}'
   sc.exe create $LOGGINGAGENT_SERVICE binpath= "${LOGGINGAGENT_ROOT}\bin\fluent-bit.exe -c \fluent-bit\conf\fluent-bit.conf"
   sc.exe failure $LOGGINGAGENT_SERVICE reset= 30 actions= restart/5000
-  Write-VerboseServiceInfoToConsole -Service $LOGGINGAGENT_SERVICE
+  sc.exe query $LOGGINGAGENT_SERVICE
 
-  Log-Output "Creating service: ${LOGGINGEXPORTER_SERVICE}"
+  Log-Output 'Creating service: ${LOGGINGEXPORTER_SERVICE}'
   sc.exe create  $LOGGINGEXPORTER_SERVICE  binpath= "${LOGGINGEXPORTER_ROOT}\flb-exporter.exe --kubernetes-separator=_ --stackdriver-resource-model=k8s --enable-pod-label-discovery --logtostderr --winsvc  --pod-label-dot-replacement=_"
   sc.exe failure $LOGGINGEXPORTER_SERVICE reset= 30 actions= restart/5000
-  Write-VerboseServiceInfoToConsole -Service $LOGGINGEXPORTER_SERVICE
+  sc.exe query $LOGGINGEXPORTER_SERVICE
 }
 
 # Writes the logging configuration file for Logging agent. Restart-LoggingAgent
@@ -2138,7 +2134,6 @@ function Configure-StackdriverAgent {
   # seconds. The logging agent may die die to various disruptions but can be
   # resumed.
   sc.exe failure StackdriverLogging reset= 0 actions= restart/1000/restart/10000
-  Write-VerboseServiceInfoToConsole -Service 'StackdriverLogging'
 }
 
 # The NODE_NAME placeholder must be replaced with the node's name (hostname).

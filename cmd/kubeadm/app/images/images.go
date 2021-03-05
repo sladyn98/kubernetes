@@ -44,8 +44,9 @@ func GetKubernetesImage(image string, cfg *kubeadmapi.ClusterConfiguration) stri
 	return GetGenericImage(repoPrefix, image, kubernetesImageTag)
 }
 
-// GetDNSImage generates and returns the image for CoreDNS.
-func GetDNSImage(cfg *kubeadmapi.ClusterConfiguration) string {
+// GetDNSImage generates and returns the image for the DNS, that can be CoreDNS or kube-dns.
+// Given that kube-dns uses 3 containers, an additional imageName parameter was added
+func GetDNSImage(cfg *kubeadmapi.ClusterConfiguration, imageName string) string {
 	// DNS uses default image repository by default
 	dnsImageRepository := cfg.ImageRepository
 	// unless an override is specified
@@ -59,7 +60,7 @@ func GetDNSImage(cfg *kubeadmapi.ClusterConfiguration) string {
 	if cfg.DNS.ImageTag != "" {
 		dnsImageTag = cfg.DNS.ImageTag
 	}
-	return GetGenericImage(dnsImageRepository, constants.CoreDNSImageName, dnsImageTag)
+	return GetGenericImage(dnsImageRepository, imageName, dnsImageTag)
 }
 
 // GetEtcdImage generates and returns the image for etcd
@@ -111,7 +112,11 @@ func GetControlPlaneImages(cfg *kubeadmapi.ClusterConfiguration) []string {
 
 	// Append the appropriate DNS images
 	if cfg.DNS.Type == kubeadmapi.CoreDNS {
-		imgs = append(imgs, GetDNSImage(cfg))
+		imgs = append(imgs, GetDNSImage(cfg, constants.CoreDNSImageName))
+	} else {
+		imgs = append(imgs, GetDNSImage(cfg, constants.KubeDNSKubeDNSImageName))
+		imgs = append(imgs, GetDNSImage(cfg, constants.KubeDNSSidecarImageName))
+		imgs = append(imgs, GetDNSImage(cfg, constants.KubeDNSDnsMasqNannyImageName))
 	}
 
 	return imgs

@@ -357,7 +357,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 					gotError = err
 				},
 				NextPod: func() *framework.QueuedPodInfo {
-					return &framework.QueuedPodInfo{PodInfo: framework.NewPodInfo(item.sendPod)}
+					return &framework.QueuedPodInfo{Pod: item.sendPod}
 				},
 				Profiles: profile.Map{
 					testSchedulerName: fwk,
@@ -448,9 +448,7 @@ func TestSchedulerMultipleProfilesScheduling(t *testing.T) {
 	// Set up scheduler for the 3 nodes.
 	// We use a fake filter that only allows one particular node. We create two
 	// profiles, each with a different node in the filter configuration.
-	objs := append([]runtime.Object{
-		&v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ""}}}, nodes...)
-	client := clientsetfake.NewSimpleClientset(objs...)
+	client := clientsetfake.NewSimpleClientset(nodes...)
 	broadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: client.EventsV1()})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -840,7 +838,7 @@ func setupTestScheduler(queuedPodStore *clientcache.FIFO, scache internalcache.C
 		SchedulerCache: scache,
 		Algorithm:      algo,
 		NextPod: func() *framework.QueuedPodInfo {
-			return &framework.QueuedPodInfo{PodInfo: framework.NewPodInfo(clientcache.Pop(queuedPodStore).(*v1.Pod))}
+			return &framework.QueuedPodInfo{Pod: clientcache.Pop(queuedPodStore).(*v1.Pod)}
 		},
 		Error: func(p *framework.QueuedPodInfo, err error) {
 			errChan <- err

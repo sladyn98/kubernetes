@@ -31,13 +31,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/network/common"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
 	"github.com/onsi/ginkgo"
 )
 
-var _ = common.SIGDescribe("EndpointSlice", func() {
+var _ = SIGDescribe("EndpointSlice", func() {
 	f := framework.NewDefaultFramework("endpointslice")
 
 	var cs clientset.Interface

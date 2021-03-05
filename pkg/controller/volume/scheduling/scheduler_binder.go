@@ -40,7 +40,6 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1"
 	storagelistersv1alpha1 "k8s.io/client-go/listers/storage/v1alpha1"
-	storagehelpers "k8s.io/component-helpers/storage/volume"
 	csitrans "k8s.io/csi-translation-lib"
 	csiplugins "k8s.io/csi-translation-lib/plugins"
 	"k8s.io/klog/v2"
@@ -674,13 +673,8 @@ func (b *volumeBinder) isVolumeBound(pod *v1.Pod, vol *v1.Volume) (bound bool, p
 	switch {
 	case vol.PersistentVolumeClaim != nil:
 		pvcName = vol.PersistentVolumeClaim.ClaimName
-	case vol.Ephemeral != nil:
-		if !utilfeature.DefaultFeatureGate.Enabled(features.GenericEphemeralVolume) {
-			return false, nil, fmt.Errorf(
-				"volume %s is a generic ephemeral volume, but that feature is disabled in kube-scheduler",
-				vol.Name,
-			)
-		}
+	case vol.Ephemeral != nil &&
+		utilfeature.DefaultFeatureGate.Enabled(features.GenericEphemeralVolume):
 		// Generic ephemeral inline volumes also use a PVC,
 		// just with a computed name, and...
 		pvcName = pod.Name + "-" + vol.Name
@@ -821,7 +815,7 @@ func (b *volumeBinder) findMatchingVolumes(pod *v1.Pod, claimsToBind []*v1.Persi
 
 	for _, pvc := range claimsToBind {
 		// Get storage class name from each PVC
-		storageClassName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
+		storageClassName := v1helper.GetPersistentVolumeClaimClass(pvc)
 		allPVs := b.pvCache.ListPVs(storageClassName)
 		pvcName := getPVCName(pvc)
 
@@ -861,7 +855,7 @@ func (b *volumeBinder) checkVolumeProvisions(pod *v1.Pod, claimsToProvision []*v
 	// fails or we encounter an error.
 	for _, claim := range claimsToProvision {
 		pvcName := getPVCName(claim)
-		className := storagehelpers.GetPersistentVolumeClaimClass(claim)
+		className := v1helper.GetPersistentVolumeClaimClass(claim)
 		if className == "" {
 			return false, false, nil, fmt.Errorf("no class for claim %q", pvcName)
 		}

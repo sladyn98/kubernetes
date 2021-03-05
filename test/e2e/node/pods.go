@@ -48,7 +48,7 @@ import (
 var _ = SIGDescribe("Pods Extended", func() {
 	f := framework.NewDefaultFramework("pods")
 
-	ginkgo.Describe("Delete Grace Period", func() {
+	framework.KubeDescribe("Delete Grace Period", func() {
 		var podClient *framework.PodClient
 		ginkgo.BeforeEach(func() {
 			podClient = f.PodClient()
@@ -145,7 +145,7 @@ var _ = SIGDescribe("Pods Extended", func() {
 		})
 	})
 
-	ginkgo.Describe("Pods Set QOS Class", func() {
+	framework.KubeDescribe("Pods Set QOS Class", func() {
 		var podClient *framework.PodClient
 		ginkgo.BeforeEach(func() {
 			podClient = f.PodClient()
@@ -197,7 +197,7 @@ var _ = SIGDescribe("Pods Extended", func() {
 		})
 	})
 
-	ginkgo.Describe("Pod Container Status", func() {
+	framework.KubeDescribe("Pod Container Status", func() {
 		var podClient *framework.PodClient
 		ginkgo.BeforeEach(func() {
 			podClient = f.PodClient()
@@ -441,7 +441,7 @@ var _ = SIGDescribe("Pods Extended", func() {
 
 	})
 
-	ginkgo.Describe("Pod Container lifecycle", func() {
+	framework.KubeDescribe("Pod Container lifecycle", func() {
 		var podClient *framework.PodClient
 		ginkgo.BeforeEach(func() {
 			podClient = f.PodClient()

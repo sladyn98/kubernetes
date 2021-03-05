@@ -11,6 +11,7 @@ reviewers:
 - caesarxuchao
 - mikedanese
 - liggitt
+- nikhiljindal
 - erictune
 - pmorie
 - sttts
@@ -24,11 +25,14 @@ reviewers:
 - piosz
 - dims
 - errordeveloper
+- madhusudancs
 - rootfs
 - mml
 - resouer
+- mbohlool
 - therc
 - pweil-
 - lukaszo
+- jianhuiz
 labels:
 - sig/apps

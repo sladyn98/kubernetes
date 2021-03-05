@@ -62,6 +62,7 @@ func isSubpath(subpath, path string) bool {
 //    /stats/*   => verb=<api verb from request>, resource=nodes, name=<node name>, subresource=stats
 //    /metrics/* => verb=<api verb from request>, resource=nodes, name=<node name>, subresource=metrics
 //    /logs/*    => verb=<api verb from request>, resource=nodes, name=<node name>, subresource=log
+//    /spec/*    => verb=<api verb from request>, resource=nodes, name=<node name>, subresource=spec
 func (n nodeAuthorizerAttributesGetter) GetRequestAttributes(u user.Info, r *http.Request) authorizer.Attributes {
 
 	apiVerb := ""
@@ -104,6 +105,8 @@ func (n nodeAuthorizerAttributesGetter) GetRequestAttributes(u user.Info, r *htt
 	case isSubpath(requestPath, logsPath):
 		// "log" to match other log subresources (pods/log, etc)
 		attrs.Subresource = "log"
+	case isSubpath(requestPath, specPath):
+		attrs.Subresource = "spec"
 	}
 
 	klog.V(5).InfoS("Node request attributes", "user", attrs.GetUser().GetName(), "verb", attrs.GetVerb(), "resource", attrs.GetResource(), "subresource", attrs.GetSubresource())

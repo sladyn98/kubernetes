@@ -91,10 +91,10 @@ build:
 
 	# Compile migrate
 	migrate_tmp_dir=$(shell mktemp -d); \
-	docker run --rm --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -v $${migrate_tmp_dir}:/build$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
+	docker run --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -v $${migrate_tmp_dir}:/build$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
 		/bin/bash -c "CGO_ENABLED=0 go build -o /build/migrate k8s.io/kubernetes/cluster/images/etcd/migrate"; \
 	$(BIN_INSTALL) $${migrate_tmp_dir}/migrate $(TEMP_DIR); \
-	docker run --rm --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -v $${migrate_tmp_dir}:/build$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
+	docker run --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -v $${migrate_tmp_dir}:/build$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
 		/bin/bash -c "CGO_ENABLED=0 go build -o /build/cp k8s.io/kubernetes/cluster/images/etcd/cp"; \
 	$(BIN_INSTALL) $${migrate_tmp_dir}/cp $(TEMP_DIR);
 
@@ -125,7 +125,7 @@ else
 		if [ $$(echo $$version | cut -d. -f2) -gt 3 ]; then \
 			etcd_build_dir="/go/src/go.etcd.io/etcd"; \
 		fi; \
-		docker run --rm --interactive -v $${etcd_release_tmp_dir}:/etcdbin golang:$(GOLANG_VERSION)$(DOCKER_VOL_OPTS) /bin/bash -c \
+		docker run --interactive -v $${etcd_release_tmp_dir}:/etcdbin golang:$(GOLANG_VERSION)$(DOCKER_VOL_OPTS) /bin/bash -c \
 			"git clone https://github.com/coreos/etcd $$etcd_build_dir \
 			&& cd $$etcd_build_dir \
 			&& git checkout v$${version} \
@@ -143,13 +143,12 @@ else
 	cd $(TEMP_DIR) && echo "ENV ETCD_UNSUPPORTED_ARCH=$(ARCH)" >> Dockerfile
 endif
 
+	# Replace BASEIMAGE with the real base image
+	cd $(TEMP_DIR) && sed -i.bak 's|BASEIMAGE|$(BASEIMAGE)|g' Dockerfile
+	cd $(TEMP_DIR) && sed -i.bak 's|RUNNERIMAGE|$(RUNNERIMAGE)|g' Dockerfile
+
 	# And build the image
-	docker build \
-		--pull \
-		-t $(REGISTRY)/etcd-$(ARCH):$(IMAGE_TAG) \
-		--build-arg BASEIMAGE=$(BASEIMAGE) \
-		--build-arg RUNNERIMAGE=$(RUNNERIMAGE) \
-		$(TEMP_DIR)
+	docker build --pull -t $(REGISTRY)/etcd-$(ARCH):$(IMAGE_TAG) $(TEMP_DIR)
 
 push: build
 	docker tag $(REGISTRY)/etcd-$(ARCH):$(IMAGE_TAG) $(MANIFEST_IMAGE)-$(ARCH):$(IMAGE_TAG)
@@ -173,7 +172,7 @@ push-manifest:
 	docker manifest push --purge ${MANIFEST_IMAGE}:${IMAGE_TAG}
 
 unit-test:
-	docker run --rm --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
+	docker run --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) golang:$(GOLANG_VERSION) \
 		/bin/bash -c "CGO_ENABLED=0 go test -v k8s.io/kubernetes/cluster/images/etcd/migrate"
 
 # Integration tests require both a golang build environment and all the etcd binaries from a `k8s.gcr.io/etcd` image (`/usr/local/bin/etcd-<version>`, ...).
@@ -182,15 +181,11 @@ unit-test:
 build-integration-test-image: build
 	cp -r $(TEMP_DIR) $(TEMP_DIR)_integration_test
 	cp Dockerfile $(TEMP_DIR)_integration_test/Dockerfile
-	docker build \
-		--pull \
-		-t etcd-integration-test \
-		--build-arg BASEIMAGE=golang:$(GOLANG_VERSION) \
-		--build-arg RUNNERIMAGE=$(RUNNERIMAGE) \
-		$(TEMP_DIR)_integration_test
+	cd $(TEMP_DIR)_integration_test && sed -i.bak 's|BASEIMAGE|golang:$(GOLANG_VERSION)|g' Dockerfile
+	docker build --pull -t etcd-integration-test $(TEMP_DIR)_integration_test
 
 integration-test:
-	docker run --rm --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) etcd-integration-test \
+	docker run --interactive -v $(shell pwd)/../../../:/go/src/k8s.io/kubernetes$(DOCKER_VOL_OPTS) -e GOARCH=$(ARCH) etcd-integration-test \
 		/bin/bash -c "CGO_ENABLED=0 go test -tags=integration k8s.io/kubernetes/cluster/images/etcd/migrate -args -v 10 -logtostderr true"
 
 integration-build-test: build-integration-test-image integration-test

@@ -150,8 +150,8 @@ func (dc *DeploymentController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer dc.queue.ShutDown()
 
-	klog.InfoS("Starting controller", "controller", "deployment")
-	defer klog.InfoS("Shutting down controller", "controller", "deployment")
+	klog.Infof("Starting deployment controller")
+	defer klog.Infof("Shutting down deployment controller")
 
 	if !cache.WaitForNamedCacheSync("deployment", stopCh, dc.dListerSynced, dc.rsListerSynced, dc.podListerSynced) {
 		return
@@ -166,14 +166,14 @@ func (dc *DeploymentController) Run(workers int, stopCh <-chan struct{}) {
 
 func (dc *DeploymentController) addDeployment(obj interface{}) {
 	d := obj.(*apps.Deployment)
-	klog.V(4).InfoS("Adding deployment", "deployment", klog.KObj(d))
+	klog.V(4).Infof("Adding deployment %s", d.Name)
 	dc.enqueueDeployment(d)
 }
 
 func (dc *DeploymentController) updateDeployment(old, cur interface{}) {
 	oldD := old.(*apps.Deployment)
 	curD := cur.(*apps.Deployment)
-	klog.V(4).InfoS("Updating deployment", "deployment", klog.KObj(oldD))
+	klog.V(4).Infof("Updating deployment %s", oldD.Name)
 	dc.enqueueDeployment(curD)
 }
 
@@ -191,7 +191,7 @@ func (dc *DeploymentController) deleteDeployment(obj interface{}) {
 			return
 		}
 	}
-	klog.V(4).InfoS("Deleting deployment", "deployment", klog.KObj(d))
+	klog.V(4).Infof("Deleting deployment %s", d.Name)
 	dc.enqueueDeployment(d)
 }
 
@@ -212,7 +212,7 @@ func (dc *DeploymentController) addReplicaSet(obj interface{}) {
 		if d == nil {
 			return
 		}
-		klog.V(4).InfoS("ReplicaSet added", "replicaSet", klog.KObj(rs))
+		klog.V(4).Infof("ReplicaSet %s added.", rs.Name)
 		dc.enqueueDeployment(d)
 		return
 	}
@@ -223,7 +223,7 @@ func (dc *DeploymentController) addReplicaSet(obj interface{}) {
 	if len(ds) == 0 {
 		return
 	}
-	klog.V(4).InfoS("Orphan ReplicaSet added", "replicaSet", klog.KObj(rs))
+	klog.V(4).Infof("Orphan ReplicaSet %s added.", rs.Name)
 	for _, d := range ds {
 		dc.enqueueDeployment(d)
 	}
@@ -243,8 +243,8 @@ func (dc *DeploymentController) getDeploymentsForReplicaSet(rs *apps.ReplicaSet)
 	if len(deployments) > 1 {
 		// ControllerRef will ensure we don't do anything crazy, but more than one
 		// item in this list nevertheless constitutes user error.
-		klog.V(4).InfoS("user error! more than one deployment is selecting replica set",
-			"replicaSet", klog.KObj(rs), "labels", rs.Labels, "deployment", klog.KObj(deployments[0]))
+		klog.V(4).Infof("user error! more than one deployment is selecting replica set %s/%s with labels: %#v, returning %s/%s",
+			rs.Namespace, rs.Name, rs.Labels, deployments[0].Namespace, deployments[0].Name)
 	}
 	return deployments
 }
@@ -278,7 +278,7 @@ func (dc *DeploymentController) updateReplicaSet(old, cur interface{}) {
 		if d == nil {
 			return
 		}
-		klog.V(4).InfoS("ReplicaSet updated", "replicaSet", klog.KObj(curRS))
+		klog.V(4).Infof("ReplicaSet %s updated.", curRS.Name)
 		dc.enqueueDeployment(d)
 		return
 	}
@@ -291,7 +291,7 @@ func (dc *DeploymentController) updateReplicaSet(old, cur interface{}) {
 		if len(ds) == 0 {
 			return
 		}
-		klog.V(4).InfoS("Orphan ReplicaSet updated", "replicaSet", klog.KObj(curRS))
+		klog.V(4).Infof("Orphan ReplicaSet %s updated.", curRS.Name)
 		for _, d := range ds {
 			dc.enqueueDeployment(d)
 		}
@@ -330,7 +330,7 @@ func (dc *DeploymentController) deleteReplicaSet(obj interface{}) {
 	if d == nil {
 		return
 	}
-	klog.V(4).InfoS("ReplicaSet deleted", "replicaSet", klog.KObj(rs))
+	klog.V(4).Infof("ReplicaSet %s deleted.", rs.Name)
 	dc.enqueueDeployment(d)
 }
 
@@ -354,7 +354,7 @@ func (dc *DeploymentController) deletePod(obj interface{}) {
 			return
 		}
 	}
-	klog.V(4).InfoS("Pod deleted", "pod", klog.KObj(pod))
+	klog.V(4).Infof("Pod %s deleted.", pod.Name)
 	if d := dc.getDeploymentForPod(pod); d != nil && d.Spec.Strategy.Type == apps.RecreateDeploymentStrategyType {
 		// Sync if this Deployment now has no more Pods.
 		rsList, err := util.ListReplicaSets(d, util.RsListFromClient(dc.client.AppsV1()))
@@ -422,7 +422,7 @@ func (dc *DeploymentController) getDeploymentForPod(pod *v1.Pod) *apps.Deploymen
 	}
 	rs, err = dc.rsLister.ReplicaSets(pod.Namespace).Get(controllerRef.Name)
 	if err != nil || rs.UID != controllerRef.UID {
-		klog.V(4).InfoS("Cannot get replicaset for pod", "ownerReference", controllerRef.Name, "pod", klog.KObj(pod), "err", err)
+		klog.V(4).Infof("Cannot get replicaset %q for pod %q: %v", controllerRef.Name, pod.Name, err)
 		return nil
 	}
 
@@ -483,7 +483,7 @@ func (dc *DeploymentController) handleErr(err error, key interface{}) {
 
 	ns, name, keyErr := cache.SplitMetaNamespaceKey(key.(string))
 	if keyErr != nil {
-		klog.ErrorS(err, "Failed to split meta namespace cache key", "cacheKey", key)
+		klog.ErrorS(err, "Failed to split meta namespace cache key", "key", key)
 	}
 
 	if dc.queue.NumRequeues(key) < maxRetries {
@@ -493,7 +493,7 @@ func (dc *DeploymentController) handleErr(err error, key interface{}) {
 	}
 
 	utilruntime.HandleError(err)
-	klog.V(2).InfoS("Dropping deployment out of the queue", "deployment", klog.KRef(ns, name), "err", err)
+	klog.V(2).Infof("Dropping deployment %q out of the queue: %v", key, err)
 	dc.queue.Forget(key)
 }
 
@@ -566,21 +566,19 @@ func (dc *DeploymentController) getPodMapForDeployment(d *apps.Deployment, rsLis
 // syncDeployment will sync the deployment with the given key.
 // This function is not meant to be invoked concurrently with the same key.
 func (dc *DeploymentController) syncDeployment(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		klog.ErrorS(err, "Failed to split meta namespace cache key", "cacheKey", key)
-		return err
-	}
-
 	startTime := time.Now()
-	klog.V(4).InfoS("Started syncing deployment", "deployment", klog.KRef(namespace, name), "startTime", startTime)
+	klog.V(4).Infof("Started syncing deployment %q (%v)", key, startTime)
 	defer func() {
-		klog.V(4).InfoS("Finished syncing deployment", "deployment", klog.KRef(namespace, name), "duration", time.Since(startTime))
+		klog.V(4).Infof("Finished syncing deployment %q (%v)", key, time.Since(startTime))
 	}()
 
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return err
+	}
 	deployment, err := dc.dLister.Deployments(namespace).Get(name)
 	if errors.IsNotFound(err) {
-		klog.V(2).InfoS("Deployment has been deleted", "deployment", klog.KRef(namespace, name))
+		klog.V(2).Infof("Deployment %v has been deleted", key)
 		return nil
 	}
 	if err != nil {
